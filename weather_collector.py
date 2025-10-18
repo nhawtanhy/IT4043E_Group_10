@@ -2,7 +2,7 @@ import requests
 import os
 from datetime import datetime
 
-API_KEY = os.getenv("OPENWEATHER_API_KEY", "YOUR_API_KEY")
+API_KEY = os.getenv("OPENWEATHER_API_KEY", "4059a105896914f6ca10742d4ab0c123") # my API key
 CITY = os.getenv("CITY", "Hanoi")
 URL = f"http://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units=metric"
 
