@@ -1,0 +1,7 @@
+__pycache__/
+venv
+constant.py
+
+# Spark files that can be downloaded online: https://downloads.apache.org/spark/spark-3.5.6/
+spark/spark-3.5.6-bin-hadoop3.tgz 
+spark/spark-3.5.6-bin-hadoop3/*
