@@ -15,7 +15,7 @@ BUCKET_NAME = "hust-bucket-storage"
 S3_PATH = f"s3a://{BUCKET_NAME}/weather_data"
 
 # FIX 3: Fail fast if API key isn't set. No hardcoded fallback.
-API_KEY = os.getenv("OPENWEATHER_API_KEY","4059a105896914f6ca10742d4ab0c123")
+API_KEY = os.getenv("OPENWEATHER_API_KEY","YOUR_API_KEY")
 if not API_KEY:
     raise ValueError("ERROR: OPENWEATHER_API_KEY environment variable is not set.")
 
