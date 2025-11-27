@@ -1,0 +1,59 @@
+# docker_compose.yml for Spark
+version: '3.9'
+
+services:
+  spark-master:
+    image: apache/spark:latest
+    container_name: spark-master
+    hostname: spark-master
+    entrypoint: ['/opt/spark/entrypoint.sh', 'master']
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    env_file:
+      - .env.spark
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./data:/opt/spark/data
+      - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/opt/spark/entrypoint.sh
+    ports:
+      - "8080:8080"  # Spark master UI
+      - "7077:7077"  # Spark master port
+
+  spark-worker:
+    image: apache/spark:latest
+    container_name: spark-worker
+    hostname: spark-worker
+    depends_on:
+      - spark-master
+    entrypoint: ['/opt/spark/entrypoint.sh', 'worker']
+    env_file:
+      - .env.spark
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./data:/opt/spark/data
+      - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/opt/spark/entrypoint.sh
+    ports:
+      - "8081:8081"  # Spark worker UI
+
+  spark-history:
+    image: apache/spark:latest
+    container_name: spark-history
+    hostname: spark-history
+    depends_on:
+      - spark-master
+    entrypoint: ['/opt/spark/entrypoint.sh', 'history']
+    env_file:
+      - .env.spark
+    volumes:
+      - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/opt/spark/entrypoint.sh
+    ports:
+      - "18080:18080"  # Spark history UI
+
+volumes:
+  spark-logs:

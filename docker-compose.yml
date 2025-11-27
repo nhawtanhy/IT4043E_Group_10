@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+
+  # -------------------
+  # Zookeeper
+  # -------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - kafka-spark-net
+
+  # -------------------
+  # Kafka
+  # -------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"   # host-access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # Internal (Docker) listener
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+
+      # What containers and host should use
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: |
+        PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - kafka-spark-net
+
+  # -------------------
+  # Weather Collector
+  # -------------------
+  weather-collector:
+    build: .
+    container_name: weather-collector
+    environment:
+      OPENWEATHER_API_KEY: "${OPENWEATHER_API_KEY}"
+    depends_on:
+      - kafka
+    networks:
+      - kafka-spark-net
+
+  # -------------------
+  # Spark Master
+  # -------------------
+  spark-master:
+    image: apache/spark:latest
+    container_name: spark-master
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    command: [
+      "/opt/spark/bin/spark-class",
+      "org.apache.spark.deploy.master.Master",
+      "--host", "spark-master",
+      "--port", "7077"
+    ]
+    networks:
+      - kafka-spark-net
+
+  # -------------------
+  # Spark Worker
+  # -------------------
+  spark-worker:
+    image: apache/spark:latest
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+    ports:
+      - "8081:8081"
+    command: [
+      "/opt/spark/bin/spark-class",
+      "org.apache.spark.deploy.worker.Worker",
+      "spark://spark-master:7077"
+    ]
+    networks:
+      - kafka-spark-net
+
+networks:
+  kafka-spark-net:
+    driver: bridge
