@@ -29,10 +29,10 @@ p = Producer({"bootstrap.servers": KAFKA_BROKER})
 
 def delivery_report(err, msg):
     if err:
-        print(f"❌ Delivery failed: {err}")
+        print(f"Delivery failed: {err}")
     else:
         print(
-            f"📤 Delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}"
+            f"Delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}"
         )
 
 
@@ -61,7 +61,7 @@ def fetch_weather(city):
 
 
 def main():
-    print("🚀 Weather Producer Started!")
+    print("Weather Producer Started!")
 
     while True:
         for city in ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]:
