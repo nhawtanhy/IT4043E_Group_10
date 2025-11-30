@@ -76,6 +76,21 @@ services:
   #   networks:
   #     - weather-net
 
+  # spark-batcher:
+  #   build:
+  #     context: ./spark_batcher      # Folder containing Dockerfile + script
+  #   container_name: spark-batcher
+  #   user: root
+  #   depends_on:
+  #     - kafka
+  #     - weather-producer
+  #   networks:
+  #     - weather-net
+
+  #   volumes:
+  #     # This overrides the script inside the container for development
+  #     - ./spark_batcher/spark.py:/app/spark.py
+
 networks:
   weather-net:
     driver: bridge

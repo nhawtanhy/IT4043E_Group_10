@@ -246,35 +246,35 @@ def main():
     print(f"🚀 Producer Started (Parquet + Rolling 24h History)")
     print(f"   Target S3: {S3_BUCKET_NAME}/weather_data/")
     
-    while True:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting Batch...")
-        for city in CITY_LIST:
-            print(f"➡️  Processing {city}...")
-            
-            # 1. Fetch Current
-            current_raw = fetch_weather_current(city)
-            
-            # 2. Fetch Rolling 24h History
-            history_rows = fetch_weather_24h(city)
-            
-            s3_batch = []
-            if history_rows:
-                s3_batch.extend(history_rows)
-            
-            if current_raw:
-                send_to_kafka(current_raw)
-                flat_current = flatten_current_record(current_raw)
-                s3_batch.append(flat_current)
-            
-            # 3. Write to S3
-            if s3_batch:
-                append_to_s3_parquet(s3_batch, city)
+    # while True:
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting Batch...")
+    for city in CITY_LIST:
+        print(f"➡️  Processing {city}...")
         
-        if kafka_available:
-            producer.flush()
-            
-        print("Sleeping 60s...")
-        time.sleep(60)
+        # 1. Fetch Current
+        current_raw = fetch_weather_current(city)
+        
+        # 2. Fetch Rolling 24h History
+        history_rows = fetch_weather_24h(city)
+        
+        s3_batch = []
+        if history_rows:
+            s3_batch.extend(history_rows)
+        
+        if current_raw:
+            send_to_kafka(current_raw)
+            flat_current = flatten_current_record(current_raw)
+            s3_batch.append(flat_current)
+        
+        # 3. Write to S3
+        if s3_batch:
+            append_to_s3_parquet(s3_batch, city)
+    
+    if kafka_available:
+        producer.flush()
+        
+    print("Sleeping 60s...")
+    time.sleep(60)
 
 if __name__ == "__main__":
     main()
