@@ -38,7 +38,6 @@ def delivery_report(err, msg):
 
 def fetch_weather(city):
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
-
     try:
         res = requests.get(url, timeout=10)
         if res.status_code != 200:
@@ -62,7 +61,6 @@ def fetch_weather(city):
 
 def main():
     print("Weather Producer Started!")
-
     while True:
         for city in ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]:
             record = fetch_weather(city)
