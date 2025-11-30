@@ -187,13 +187,3 @@ docker compose down -v
 [Spark Batch] <------ đọc từ HDFS ---------> xử lý --> Elasticsearch
 
 
-⸻
-
-🎉 Kết luận
-
-Tài liệu này dành cho người mới chạy pipeline lần đầu — chỉ cần copy/paste từng bước là chạy được ngay.
-Nếu bạn muốn, mình có thể xuất thành file PDF, hoặc chia thành dạng Quickstart 5 phút, hoặc thêm Mermaid diagram cho dễ nhìn hơn.
-
----
-
-Nếu bạn muốn mình **xuất file README.md thực sự** (file tải về được), chỉ cần nói **"xuất file markdown"** — mình sẽ tạo file cho bạn.
