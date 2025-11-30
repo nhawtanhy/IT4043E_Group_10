@@ -18,33 +18,39 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
     networks:
       - weather-net
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-    ports:
-      - "9201:9200" # tránh conflict với ES local
-    networks:
-      - weather-net
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+  #   container_name: elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - xpack.security.enabled=false
+  #   ports:
+  #     - "9201:9200" # tránh conflict với ES local
+  #   networks:
+  #     - weather-net
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
-    container_name: kibana
-    ports:
-      - "5601:5601"
-    environment:
-      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-    networks:
-      - weather-net
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:8.11.0
+  #   container_name: kibana
+  #   ports:
+  #     - "5601:5601"
+  #   environment:
+  #     ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+  #   depends_on:
+  #     - elasticsearch
+  #   networks:
+  #     - weather-net
 
   weather-producer:
     build:
@@ -57,18 +63,18 @@ services:
     networks:
       - weather-net
 
-  spark-streamer:
-    build:
-      context: .
-      dockerfile: spark.Dockerfile
-    volumes:
-      - ./spark_stream.py:/app/spark_stream.py
-    container_name: spark-streamer
-    depends_on:
-      - kafka
-      - elasticsearch
-    networks:
-      - weather-net
+  # spark-streamer:
+  #   build:
+  #     context: .
+  #     dockerfile: spark.Dockerfile
+  #   volumes:
+  #     - ./spark_stream.py:/app/spark_stream.py
+  #   container_name: spark-streamer
+  #   depends_on:
+  #     - kafka
+  #     - elasticsearch
+  #   networks:
+  #     - weather-net
 
 networks:
   weather-net:

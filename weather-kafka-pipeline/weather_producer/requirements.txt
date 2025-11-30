@@ -1,2 +1,5 @@
 requests
 confluent-kafka
+boto3
+aws
+kafka-python-ng
