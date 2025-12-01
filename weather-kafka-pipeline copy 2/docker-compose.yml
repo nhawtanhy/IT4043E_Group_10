@@ -1,0 +1,184 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - weather-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - weather-net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9201:9200"
+    networks:
+      - weather-net
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - weather-net
+
+  weather-producer:
+    build:
+      context: ./weather_producer
+    container_name: weather-producer
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    networks:
+      - weather-net
+
+  spark-streamer:
+    build:
+      context: .
+      dockerfile: spark.Dockerfile
+    volumes:
+      - ./spark_stream.py:/app/spark_stream.py
+      - ./spark_checkpoint:/checkpoint
+    container_name: spark-streamer
+    depends_on:
+      - kafka
+      - elasticsearch
+    networks:
+      - weather-net
+
+  # ==============================
+  # HDFS NAMENODE
+  # ==============================
+  # =========================================
+  # APACHE HADOOP – NAMENODE
+  # =========================================
+  namenode:
+    platform: linux/amd64
+    image: bde2020/hadoop-namenode:latest
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hadoopcluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - FORMAT=0
+    ports:
+      - "9870:9870"
+      - "8020:8020"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    networks:
+      - weather-net
+
+  datanode:
+    platform: linux/amd64
+    image: bde2020/hadoop-datanode:latest
+    container_name: datanode
+    environment:
+      - CLUSTER_NAME=hadoopcluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    networks:
+      - weather-net
+
+  # ==============================
+  # SPARK BATCH (để chạy ETL đọc từ HDFS)
+  # ==============================
+  spark-batch:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-batch
+    container_name: spark-batch
+    depends_on:
+      - namenode
+      - datanode
+      - elasticsearch
+    volumes:
+      - ./spark_batch.py:/app/spark_batch.py
+    networks:
+      - weather-net
+  kafka-connect:
+    build:
+      context: .
+      dockerfile: connect.Dockerfile
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: "connect-cluster"
+
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_REPLICATION_FACTOR: 1
+
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      CONNECT_PLUGIN_PATH: "/usr/share/java"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+    depends_on:
+      - kafka
+      - namenode
+      - datanode
+    networks:
+      - weather-net
+  spark-hdfs-streamer:
+    build:
+      context: .
+      dockerfile: spark_hdfs.Dockerfile
+    container_name: spark-hdfs-streamer
+    volumes:
+      - ./spark_hdfs_stream.py:/app/spark_hdfs_stream.py
+      - ./spark_hdfs_checkpoint:/checkpoint
+    depends_on:
+      - kafka
+      - namenode
+      - datanode
+    networks:
+      - weather-net
+
+networks:
+  weather-net:
+    driver: bridge
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:

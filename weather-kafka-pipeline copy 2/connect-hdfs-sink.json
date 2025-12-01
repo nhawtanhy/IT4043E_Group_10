@@ -1,0 +1,13 @@
+{
+    "name": "hdfs-sink",
+    "config": {
+        "connector.class": "io.confluent.connect.hdfs.HdfsSinkConnector",
+        "tasks.max": "1",
+        "topics": "weather_raw",
+        "hdfs.url": "hdfs://namenode:8020",
+        "flush.size": "3",
+        "rotate.interval.ms": "10000",
+        "hadoop.conf.dir": "/etc/hadoop",
+        "hadoop.home": "/"
+    }
+}

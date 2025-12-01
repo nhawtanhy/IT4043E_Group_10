@@ -1,0 +1,44 @@
+# ============================
+# Stage 1 — Build Spark Base
+# ============================
+FROM eclipse-temurin:11-jdk AS spark-base
+
+RUN apt-get update && apt-get install -y \
+    curl python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# ----------- Install Spark ----------
+ARG SPARK_VERSION=3.5.1
+ARG HADOOP_VERSION=3
+
+RUN curl -L https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz \
+    -o spark.tgz && \
+    tar -xzf spark.tgz -C /opt && \
+    mv /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} /opt/spark && \
+    rm spark.tgz
+
+ENV PATH="/opt/spark/bin:$PATH"
+
+# ----------- Install PySpark ----------
+RUN pip3 install --break-system-packages pyspark==${SPARK_VERSION}
+
+# ----------- Add HDFS support via Hadoop client ----------
+RUN curl -L -o /opt/spark/jars/hadoop-client-api-3.3.6.jar \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client-api/3.3.6/hadoop-client-api-3.3.6.jar
+
+RUN curl -L -o /opt/spark/jars/hadoop-client-runtime-3.3.6.jar \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client-runtime/3.3.6/hadoop-client-runtime-3.3.6.jar
+
+# ----------- Add Elasticsearch Connector ----------
+RUN curl -L -o /opt/spark/jars/elasticsearch-spark-30_2.12-8.11.0.jar \
+    https://repo1.maven.org/maven2/org/elasticsearch/elasticsearch-spark-30_2.12/8.11.0/elasticsearch-spark-30_2.12-8.11.0.jar
+
+# ============================
+# Stage 2 — Runtime
+# ============================
+FROM spark-base AS spark-runner
+
+WORKDIR /app
+COPY spark_batch.py .
+
+CMD ["spark-submit", "--master", "local[*]", "/app/spark_batch.py"]
