@@ -68,61 +68,6 @@ Expected log:
 [OK] Saved batch X → Elasticsearch
 
 
-⸻
-
-🗂️ 3. Start HDFS
-
-3.1 Namenode
-
-docker compose up -d namenode
-
-If this is your first run:
-
-docker exec -it namenode hdfs namenode -format
-
-3.2 Datanode
-
-docker compose up -d datanode
-
-3.3 Check HDFS
-
-docker exec -it namenode hdfs dfsadmin -report
-docker exec -it namenode hdfs dfs -ls /
-
-
-⸻
-
-📁 4. Spark HDFS Streamer (Kafka → HDFS)
-
-Run this if you want to store raw data in HDFS:
-
-docker compose up -d spark-hdfs-streamer
-docker logs -f spark-hdfs-streamer
-
-Check for output files:
-
-docker exec -it namenode hdfs dfs -ls /weather/parquet
-
-
-⸻
-
-📊 5. Spark Batch ETL (HDFS → Elasticsearch)
-
-Run the batch job manually:
-
-docker compose run spark-batch spark-submit /app/spark_batch.py
-
-Or run as a service:
-
-docker compose up -d spark-batch
-docker logs -f spark-batch
-
-Batch results are written into:
-
-weather_agg
-
-
-⸻
 
 🔍 6. Quick Inspection Commands
 
