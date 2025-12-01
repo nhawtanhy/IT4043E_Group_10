@@ -85,7 +85,7 @@ docker exec -it kafka kafka-run-class kafka.tools.GetOffsetShell \
   --broker-list kafka:9092 \
   --topic weather_raw
 
-HDFS — list files
+
 
 docker exec -it namenode hdfs dfs -ls -R /weather
 
@@ -97,8 +97,8 @@ curl http://localhost:9201/weather_agg/_search?pretty
 Spark logs
 
 docker logs -f spark-streamer
-docker logs -f spark-hdfs-streamer
-docker logs -f spark-batch
+
+
 
 
 ⸻
