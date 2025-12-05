@@ -63,40 +63,40 @@ services:
     networks:
       - weather-net
 
-  spark-master:
-    build:
-      context: ./spark_batcher
-    container_name: "spark-master"
-    ports: 
-      - "7077:7077" # Spark master port
-      - "8081:8080" # Spark webUI
-    expose:
-      - "7077"
-    env_file:
-      - .env
-    environment:
-      - SPARK_NODAEMONIZE=true
-    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
-    networks:
-      - weather-net
-  spark-worker:
-    build:
-      context: ./spark_batcher
-    container_name: spark-worker
-    depends_on:
-      - spark-master
-    env_file:
-      - .env
-    environment:
-      - SPARK_NO_DAEMONIZE=true
-      # Worker needs to know where the Master is
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_CORES=1
-      - SPARK_WORKER_MEMORY=1G
-    # Run the Worker Class explicitly
-    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
-    networks:
-      - weather-net
+  # spark-master:
+  #   build:
+  #     context: ./spark_batcher
+  #   container_name: "spark-master"
+  #   ports: 
+  #     - "7077:7077" # Spark master port
+  #     - "8081:8080" # Spark webUI
+  #   expose:
+  #     - "7077"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - SPARK_NODAEMONIZE=true
+  #   command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
+  #   networks:
+  #     - weather-net
+  # spark-worker:
+  #   build:
+  #     context: ./spark_batcher
+  #   container_name: spark-worker
+  #   depends_on:
+  #     - spark-master
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - SPARK_NO_DAEMONIZE=true
+  #     # Worker needs to know where the Master is
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_CORES=1
+  #     - SPARK_WORKER_MEMORY=1G
+  #   # Run the Worker Class explicitly
+  #   command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+  #   networks:
+  #     - weather-net
   # spark-streamer:
   #   build:
   #     context: .
@@ -117,7 +117,6 @@ services:
     depends_on:
       - kafka
       - weather-producer
-      - spark-master
     env_file:
       - .env
       # - elasticsearch
