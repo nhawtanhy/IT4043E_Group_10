@@ -2,37 +2,61 @@ import os
 import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, avg, min, max, count, current_timestamp, expr
+from pyspark.sql.types import TimestampType
 
 # Constants
 S3_BUCKET = os.getenv("S3_BUCKET_NAME", "hust-bucket-storage")
-S3_PATH = f"s3a://{S3_BUCKET}/weather_data/"
+S3_PATH = f"s3a://{S3_BUCKET}/weather_data/Hanoi.parquet"
 
 def main():
     print(f"🚀 Starting Spark Batch Job...")
+
+    # --- FIX 1: Check Credentials explicitly to avoid cryptic Java errors ---
+    access_key = os.getenv("AWS_ACCESS_KEY_ID")
+    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    
+    if not access_key or not secret_key:
+        print("❌ ERROR: AWS Credentials not found in environment variables.")
+        print("   Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set.")
+        sys.exit(1)
+
     print(f"   Reading from: {S3_PATH}")
 
     # 1. Initialize Spark Session with S3 Support
-    # Note: We configure the S3A file system to use AWS credentials from Env Vars
     spark = SparkSession.builder \
         .appName("WeatherHistoryBatch") \
-        .config("spark.hadoop.fs.s3a.access.key", os.getenv("AWS_ACCESS_KEY_ID")) \
-        .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY")) \
+        .config("spark.hadoop.fs.s3a.access.key", access_key) \
+        .config("spark.hadoop.fs.s3a.secret.key", secret_key) \
         .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "true") \
+        .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
+        .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
         .getOrCreate()
 
     # Set log level to WARN to reduce noise
     spark.sparkContext.setLogLevel("WARN")
 
     try:
-        # 2. Read all Parquet files from the folder
-        # Spark treats the folder as a dataset and merges all city files automatically
-        df = spark.read.parquet(S3_PATH)
+        # 2. Read all Parquet files
+        df_raw = spark.read.parquet(S3_PATH)
         
+        # --- FIX 3: Convert the raw Long (Nanosecond) to Timestamp ---
+        # Because we used 'nanosAsLong', the 'timestamp' column is now a big Integer.
+        # We divide by 1,000,000 to get Milliseconds, then cast to Timestamp.
+        if "timestamp" in df_raw.columns:
+            # Check if it needs conversion (if it's not already a timestamp)
+            if dict(df_raw.dtypes)["timestamp"] == "bigint" or dict(df_raw.dtypes)["timestamp"] == "long":
+                 df = df_raw.withColumn("timestamp", (col("timestamp") / 1000000).cast(TimestampType()))
+            else:
+                df = df_raw
+        else:
+            df = df_raw
+
         print(f"   ✅ Data loaded. Total Raw Count: {df.count()}")
 
         # 3. Filter for Last 60 Days
-        # If data is less than 60 days, this simply takes everything available
         df_filtered = df.filter(
             col("timestamp") >= expr("date_sub(current_timestamp(), 60)")
         )
@@ -54,17 +78,25 @@ def main():
             
             stats_df.show(truncate=False)
             
-            # Optional: Save the processed results back to S3
-            # output_path = f"s3a://{S3_BUCKET}/processed_stats/weather_report_60d"
-            # stats_df.write.mode("overwrite").parquet(output_path)
-            # print(f"   💾 Stats saved to {output_path}")
-
+            # --- OPTIONAL: Write to Elasticsearch (Based on your requirements) ---
+            # To enable this, uncomment below:
+            # print("   🚀 Writing to Elasticsearch...")
+            # stats_df.write \
+            #    .format("org.elasticsearch.spark.sql") \
+            #    .option("es.nodes", "elasticsearch") \
+            #    .option("es.port", "9200") \
+            #    .option("es.resource", "weather_stats/_doc") \
+            #    .option("es.nodes.wan.only", "true") \
+            #    .save()
+            
         else:
             print("   ⚠️ No data found in the 60-day window.")
 
     except Exception as e:
         print(f"   ❌ Spark Job Failed: {e}")
-        # Common error: S3 keys missing or path does not exist yet
+        # Print the full stack trace for debugging if needed
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
     spark.stop()
