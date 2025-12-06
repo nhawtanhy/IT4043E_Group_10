@@ -55,4 +55,4 @@ FROM spark-base AS spark-runner
 WORKDIR /app
 COPY spark.py .     
 
-CMD ["spark-submit", "--master", "local[*]", "/app/spark.py"]
+CMD ["spark-submit", "--master", "local[*]", "/app/spark_batch.py"]

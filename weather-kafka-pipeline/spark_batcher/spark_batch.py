@@ -5,22 +5,22 @@ from pyspark.sql.functions import col, avg, min, max, count, current_timestamp, 
 from pyspark.sql.types import TimestampType
 
 # Constants
+CITY_LIST = ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]
 S3_BUCKET = os.getenv("S3_BUCKET_NAME", "hust-bucket-storage")
-S3_PATH = f"s3a://{S3_BUCKET}/weather_data/Hanoi.parquet"
+S3_PATHS = []
+for CITY in CITY_LIST:
+    S3_PATHS.append("s3a://"+ str(S3_BUCKET) + "/weather_data/" + str(CITY) + ".parquet")
 
 def main():
-    print(f"🚀 Starting Spark Batch Job...")
-
-    # --- FIX 1: Check Credentials explicitly to avoid cryptic Java errors ---
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
     
     if not access_key or not secret_key:
-        print("❌ ERROR: AWS Credentials not found in environment variables.")
-        print("   Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set.")
+        print("❌ ERROR: AWS Credentials not found in environment variables. " \
+        "Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set.")
         sys.exit(1)
 
-    print(f"   Reading from: {S3_PATH}")
+    print("-------------------------------------------------------------------------------")
 
     # 1. Initialize Spark Session with S3 Support
     spark = SparkSession.builder \
@@ -38,6 +38,7 @@ def main():
     # Set log level to WARN to reduce noise
     spark.sparkContext.setLogLevel("WARN")
 
+    print(f"Reading from S3, file ")
     try:
         # 2. Read all Parquet files
         df_raw = spark.read.parquet(S3_PATH)
