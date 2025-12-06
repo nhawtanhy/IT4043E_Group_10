@@ -39,8 +39,7 @@ def foreach_batch(df, batch_id):
             df.write.format("org.elasticsearch.spark.sql")
             .option("es.nodes", "elasticsearch")
             .option("es.port", "9200")
-            .option("es.nodes.wan.only", "true")  # quan trọng trong Docker Desktop
-            # .option("es.resource", f"{ES_INDEX}/_doc")
+            .option("es.nodes.wan.only", "true")
             .option("es.resource", f"{ES_INDEX}")
             .mode("append")
             .save()

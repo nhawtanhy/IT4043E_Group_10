@@ -60,9 +60,7 @@ def main():
         df_filtered = df.filter(
             col("timestamp") >= expr("date_sub(current_timestamp(), 60)")
         )
-        
         filtered_count = df_filtered.count()
-        print(f"   📅 Data from last 60 days: {filtered_count} rows")
 
         if filtered_count > 0:
             # 4. Perform Analytics: Average Temp & Humidity per City
@@ -80,23 +78,24 @@ def main():
             
             # --- OPTIONAL: Write to Elasticsearch (Based on your requirements) ---
             # To enable this, uncomment below:
-            # print("   🚀 Writing to Elasticsearch...")
-            # stats_df.write \
-            #    .format("org.elasticsearch.spark.sql") \
-            #    .option("es.nodes", "elasticsearch") \
-            #    .option("es.port", "9200") \
-            #    .option("es.resource", "weather_stats/_doc") \
-            #    .option("es.nodes.wan.only", "true") \
-            #    .save()
+            ES_INDEX = "weather-data"
+
+            print("   🚀 Writing to Elasticsearch...")
+            stats_df.write \
+               .format("org.elasticsearch.spark.sql") \
+               .option("es.nodes", "elasticsearch") \
+               .option("es.port", "9200") \
+               .option("es.resource", f"{ES_INDEX}") \
+               .option("es.nodes.wan.only", "true") \
+               .save()
             
         else:
             print("   ⚠️ No data found in the 60-day window.")
 
     except Exception as e:
-        print(f"   ❌ Spark Job Failed: {e}")
-        # Print the full stack trace for debugging if needed
-        import traceback
-        traceback.print_exc()
+        print("------------------------------SPARK-BATCH FAILED!------------------------------")
+        print(f"Error: {e}")
+        print("-------------------------------------------------------------------------------")
         sys.exit(1)
 
     spark.stop()
