@@ -32,7 +32,7 @@ def foreach_batch(df, batch_id):
         return
 
     # In trước 10 dòng để debug
-    df.show(10, truncate=False)
+    # df.show(10, truncate=False)
 
     try:
         (

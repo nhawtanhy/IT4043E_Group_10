@@ -97,6 +97,7 @@ def main():
                 .option("es.port", "9200") \
                 .option("es.resource", f"{ES_INDEX}") \
                 .option("es.nodes.wan.only", "true") \
+                .mode("append") \
                 .save()
                 
             else:
