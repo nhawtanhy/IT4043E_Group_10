@@ -5,8 +5,6 @@ FROM eclipse-temurin:17-jdk AS spark-base
 
 USER root
 
-# [FIX] Added python3 and python3-pip. 
-# The base image is Java only, so pip3 install would fail without this.
 RUN apt-get update && \
     apt-get install -y curl python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
@@ -53,6 +51,6 @@ RUN curl -L -o /opt/spark/jars/elasticsearch-spark-30_2.12-8.11.0.jar \
 FROM spark-base AS spark-runner
 
 WORKDIR /app
-COPY spark.py .     
+COPY spark_batch.py .     
 
 CMD ["spark-submit", "--master", "local[*]", "/app/spark_batch.py"]

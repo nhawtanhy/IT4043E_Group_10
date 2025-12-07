@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import socket
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, avg, min, max, count, current_timestamp, expr
 from pyspark.sql.types import TimestampType
@@ -7,11 +9,32 @@ from pyspark.sql.types import TimestampType
 # Constants
 CITY_LIST = ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]
 S3_BUCKET = os.getenv("S3_BUCKET_NAME", "hust-bucket-storage")
-S3_PATHS = []
-for CITY in CITY_LIST:
-    S3_PATHS.append("s3a://"+ str(S3_BUCKET) + "/weather_data/" + str(CITY) + ".parquet")
+S3_PATHS = [f"s3a://{S3_BUCKET}/weather_data/{city}.parquet" for city in CITY_LIST]
+
+def wait_for_elasticsearch(host="elasticsearch", port=9200, timeout=120):
+    """
+    Waits for Elasticsearch to become responsive before running the job.
+    """
+    print(f"⏳ Waiting for Elasticsearch ({host}:{port}) to come online...")
+    start_time = time.time()
+    
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=3):
+                print("✅ Elasticsearch is UP! Starting Spark job...")
+                return True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            current_time = time.time()
+            if current_time - start_time > timeout:
+                print(f"❌ Timed out waiting for Elasticsearch after {timeout} seconds.")
+                return False
+            time.sleep(5)
 
 def main():
+
+    if not wait_for_elasticsearch(host="elasticsearch", port=9200):
+        sys.exit(1)
+        
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
     
@@ -37,67 +60,54 @@ def main():
 
     # Set log level to WARN to reduce noise
     spark.sparkContext.setLogLevel("WARN")
-
-    print(f"Reading from S3, file ")
-    try:
-        # 2. Read all Parquet files
-        df_raw = spark.read.parquet(S3_PATH)
-        
-        # --- FIX 3: Convert the raw Long (Nanosecond) to Timestamp ---
-        # Because we used 'nanosAsLong', the 'timestamp' column is now a big Integer.
-        # We divide by 1,000,000 to get Milliseconds, then cast to Timestamp.
-        if "timestamp" in df_raw.columns:
-            # Check if it needs conversion (if it's not already a timestamp)
-            if dict(df_raw.dtypes)["timestamp"] == "bigint" or dict(df_raw.dtypes)["timestamp"] == "long":
-                 df = df_raw.withColumn("timestamp", (col("timestamp") / 1000000).cast(TimestampType()))
+    for i in range(len(S3_PATHS)):
+        print(f"Reading from S3, file {S3_PATHS[i]}")
+        try:
+            # Read Parquet file
+            df_raw = spark.read.parquet(S3_PATHS[i])
+            
+            # Because we used 'nanosAsLong', the 'timestamp' column is now a big Integer.
+            # We divide by 1,000,000 to get Milliseconds, then cast to Timestamp.
+            if "timestamp" in df_raw.columns:
+                # Check if it needs conversion (if it's not already a timestamp)
+                if dict(df_raw.dtypes)["timestamp"] == "bigint" or dict(df_raw.dtypes)["timestamp"] == "long":
+                    df = df_raw.withColumn("timestamp", (col("timestamp") / 1000000).cast(TimestampType()))
+                else:
+                    df = df_raw
             else:
                 df = df_raw
-        else:
-            df = df_raw
 
-        print(f"   ✅ Data loaded. Total Raw Count: {df.count()}")
+            print(f"   ✅ Data loaded. Total Raw Count: {df.count()}")
 
-        # 3. Filter for Last 60 Days
-        df_filtered = df.filter(
-            col("timestamp") >= expr("date_sub(current_timestamp(), 60)")
-        )
-        filtered_count = df_filtered.count()
+            # 3. Filter for Last 60 Days
+            df_filtered = df.filter(
+                col("timestamp") >= expr("date_sub(current_timestamp(), 60)")
+            )
+            filtered_count = df_filtered.count()
 
-        if filtered_count > 0:
-            # 4. Perform Analytics: Average Temp & Humidity per City
-            print("\n📊 Average Weather Conditions (Last 2 Months):")
-            
-            stats_df = df_filtered.groupBy("city").agg(
-                count("*").alias("record_count"),
-                avg("temp").alias("avg_temp"),
-                min("temp").alias("min_temp"),
-                max("temp").alias("max_temp"),
-                avg("humidity").alias("avg_humidity")
-            ).orderBy("city")
-            
-            stats_df.show(truncate=False)
-            
-            # --- OPTIONAL: Write to Elasticsearch (Based on your requirements) ---
-            # To enable this, uncomment below:
-            ES_INDEX = "weather-data"
+            if filtered_count > 0:
 
-            print("   🚀 Writing to Elasticsearch...")
-            stats_df.write \
-               .format("org.elasticsearch.spark.sql") \
-               .option("es.nodes", "elasticsearch") \
-               .option("es.port", "9200") \
-               .option("es.resource", f"{ES_INDEX}") \
-               .option("es.nodes.wan.only", "true") \
-               .save()
-            
-        else:
-            print("   ⚠️ No data found in the 60-day window.")
+                # Write to Elasticsearch
+                ES_INDEX = "weather-data"
 
-    except Exception as e:
-        print("------------------------------SPARK-BATCH FAILED!------------------------------")
-        print(f"Error: {e}")
-        print("-------------------------------------------------------------------------------")
-        sys.exit(1)
+                print("   🚀 Writing to Elasticsearch...")
+                df_filtered.write \
+                .format("org.elasticsearch.spark.sql") \
+                .option("es.nodes", "elasticsearch") \
+                .option("es.port", "9200") \
+                .option("es.resource", f"{ES_INDEX}") \
+                .option("es.nodes.wan.only", "true") \
+                .save()
+                
+            else:
+                print("No data found in the 60-day window.")
+
+        except Exception as e:
+            print("------------------------------SPARK-BATCH FAILED!------------------------------")
+            print(f"Error: {e}")
+            print("-------------------------------------------------------------------------------")
+            time.sleep(300)
+            sys.exit(1)
 
     spark.stop()
 
