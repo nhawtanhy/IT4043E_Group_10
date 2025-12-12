@@ -10,6 +10,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY s3aproducer.py .
+COPY kafka-producer.py .
 
-CMD ["python", "-u", "s3aproducer.py"]
+CMD ["python", "-u", "kafka-producer.py"]

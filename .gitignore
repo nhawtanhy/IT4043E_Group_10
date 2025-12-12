@@ -4,3 +4,6 @@ constant.py
 
 # Secrets
 .env 
+
+# Test files
+test.py

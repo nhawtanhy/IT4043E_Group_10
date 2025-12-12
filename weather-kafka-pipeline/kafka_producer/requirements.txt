@@ -1,0 +1,8 @@
+requests
+confluent-kafka
+boto3
+aws
+kafka-python-ng
+pandas
+pyarrow
+s3fs

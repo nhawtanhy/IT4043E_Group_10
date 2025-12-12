@@ -3,7 +3,7 @@ import sys
 import time
 import socket
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, avg, min, max, count, current_timestamp, expr
+from pyspark.sql.functions import col, expr, date_format, concat_ws
 from pyspark.sql.types import TimestampType
 
 # Constants
@@ -59,21 +59,31 @@ def main():
         .getOrCreate()
 
     # Set log level to WARN to reduce noise
-    spark.sparkContext.setLogLevel("WARN")
+    spark.sparkContext.setLogLevel("ERROR")
     for i in range(len(S3_PATHS)):
         print(f"Reading from S3, file {S3_PATHS[i]}")
         try:
             # Read Parquet file
             df_raw = spark.read.parquet(S3_PATHS[i])
-            
-            # Because we used 'nanosAsLong', the 'timestamp' column is now a big Integer.
-            # We divide by 1,000,000 to get Milliseconds, then cast to Timestamp.
+
             if "timestamp" in df_raw.columns:
-                # Check if it needs conversion (if it's not already a timestamp)
-                if dict(df_raw.dtypes)["timestamp"] == "bigint" or dict(df_raw.dtypes)["timestamp"] == "long":
-                    df = df_raw.withColumn("timestamp", (col("timestamp") / 1000000).cast(TimestampType()))
+                # Check if it needs conversion from Long/BigInt
+                dtypes = dict(df_raw.dtypes)
+                if dtypes["timestamp"] in ["bigint", "long"]:
+                    # Convert Nanosecond to seconds
+                    df = df_raw.withColumn(
+                        "timestamp", 
+                        date_format(
+                            (col("timestamp") / 1_000_000_000).cast(TimestampType()), 
+                            "yyyy-MM-dd HH:mm:ss"
+                        )
+                    )
                 else:
-                    df = df_raw
+                    # If it's already a timestamp object, just format it
+                    df = df_raw.withColumn(
+                        "timestamp", 
+                        date_format(col("timestamp"), "yyyy-MM-dd HH:mm:ss")
+                    )
             else:
                 df = df_raw
 
@@ -89,7 +99,7 @@ def main():
 
                 # Write to Elasticsearch
                 ES_INDEX = "weather-data"
-
+                df_final = df_filtered.withColumn("es_id", concat_ws("_", col("city"), col("timestamp")))
                 print("   🚀 Writing to Elasticsearch...")
                 df_filtered.write \
                 .format("org.elasticsearch.spark.sql") \

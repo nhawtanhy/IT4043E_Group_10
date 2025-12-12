@@ -3,16 +3,14 @@ import os
 import time
 import io
 from datetime import datetime, timedelta
-
+# import const
 import requests
 import boto3
 import pandas as pd
-from confluent_kafka import Producer
 from botocore.exceptions import ClientError
 
 # ================= CONFIGURATION =================
 API_KEY = os.getenv("OPENWEATHER_API_KEY")
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:29092")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "hust-bucket-storage")
 TOPIC = "weather_raw"
 CITY_LIST = ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]
@@ -58,43 +56,7 @@ CITY_COORDS = {
     "Can Tho": {"lat": 10.0452, "lon": 105.7469},
 }
 
-# --- SETUP CLIENTS ---
-try:
-    producer = Producer({
-        "bootstrap.servers": KAFKA_BROKER,
-        "socket.timeout.ms": 5000
-    })
-    kafka_available = True
-except Exception as e:
-    print(f"⚠️ Kafka not available: {e}")
-    kafka_available = False
-
 s3 = boto3.client('s3')
-
-def fetch_weather_current(city):
-    """Fetches CURRENT weather data for Kafka."""
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            
-            # Floor to current hour for alignment
-            now = datetime.utcnow()
-            current_hour = now.replace(minute=0, second=0, microsecond=0)
-            
-            return {
-                "city": city,
-                "timestamp": current_hour.isoformat(),
-                "temperature": data["main"]["temp"],
-                "humidity": data["main"]["humidity"],
-                "weather": data["weather"][0]["description"],
-                "raw": data 
-            }
-        print(f"[WARN] API {res.status_code} for {city}")
-    except Exception as e:
-        print(f"[ERROR] API Request failed: {e}")
-    return None
 
 def fetch_weather_24h(city):
     """
@@ -138,7 +100,7 @@ def fetch_weather_24h(city):
         for i, t_str in enumerate(timestamps):
             record_dt = datetime.fromisoformat(t_str)
             
-            # 🔍 FILTER: Keep rows strictly within [Now - 24h, Now)
+            # Keep rows strictly within [Now - 24h, Now)
             # We use '<' instead of '<=' for the upper bound to EXCLUDE current hour
             if start_dt <= record_dt < now_dt:
                 
@@ -164,63 +126,40 @@ def fetch_weather_24h(city):
                     'visibility': None
                 }
                 records.append(record)
-            
-        return records
 
     except Exception as e:
         print(f"[ERROR] History fetch error: {e}")
         return []
-
-def flatten_current_record(record):
-    raw = record['raw']
-    return {
-        'city': record['city'],
-        'timestamp': record['timestamp'],
-        'description': record['weather'],
-        'temp': raw['main']['temp'],
-        'feels_like': raw['main']['feels_like'],
-        'pressure': raw['main']['pressure'],
-        'humidity': raw['main']['humidity'],
-        'temp_min': raw['main']['temp_min'],
-        'temp_max': raw['main']['temp_max'],
-        'wind_speed': raw['wind'].get('speed', 0),
-        'wind_deg': raw['wind'].get('deg', 0),
-        'wind_gust': raw['wind'].get('gust', 0),
-        'cloudiness': raw['clouds'].get('all', 0),
-        'visibility': raw.get('visibility', 0)
-    }
-
-def append_to_s3_parquet(new_records_list, city):
-    if not new_records_list:
-        return
-
-    file_key = f"weather_data/{city}.parquet"
-    new_df = pd.DataFrame(new_records_list)
     
-    # Use mixed format to handle different ISO strings safely
+    print(f"Uploading to S3!...")
+    file_key = f"weather_data/{city}.parquet"
+    new_df = pd.DataFrame(records)
+    
     new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], format='mixed')
+    # Add 7 hours (GMT+7)
+    new_df['timestamp'] = new_df['timestamp'] + timedelta(hours=7)
 
     try:
         obj = s3.get_object(Bucket=S3_BUCKET_NAME, Key=file_key)
         existing_df = pd.read_parquet(io.BytesIO(obj['Body'].read()))
         existing_df['timestamp'] = pd.to_datetime(existing_df['timestamp'], format='mixed')
 
+        # Merge
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-        # Drop duplicates by timestamp to keep data clean
-        combined_df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)
+        # Deduplicate (preprocess)
+        combined_df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)    
         combined_df.sort_values(by='timestamp', inplace=True)
         
-        print(f"   Existing file found. Total rows: {len(combined_df)}")
-
     except ClientError as e:
         if e.response['Error']['Code'] == "NoSuchKey":
-            print(f"   Creating new Parquet file for {city}")
+            print(f"   [S3] Creating new Parquet file for {city}")
             combined_df = new_df
             combined_df.sort_values(by='timestamp', inplace=True)
         else:
             print(f"   ❌ S3 Read Error: {e}")
             return
 
+    # Write back to S3
     try:
         out_buffer = io.BytesIO()
         combined_df.to_parquet(out_buffer, index=False, engine='pyarrow')
@@ -229,52 +168,92 @@ def append_to_s3_parquet(new_records_list, city):
     except Exception as e:
         print(f"   ❌ S3 Write Failed: {e}")
 
-def send_to_kafka(record):
-    if not kafka_available or not record:
-        return
-    try:
-        producer.produce(
-            TOPIC,
-            key=record['city'].encode("utf-8"),
-            value=json.dumps(record).encode("utf-8")
-        )
-        producer.poll(0)
-    except Exception as e:
-        print(f"   ❌ Kafka Error: {e}")
+# def send_to_kafka(record):
+#     if not kafka_available or not record:
+#         return
+#     try:
+#         producer.produce(
+#             TOPIC,
+#             key=record['city'].encode("utf-8"),
+#             value=json.dumps(record).encode("utf-8")
+#         )
+#         producer.poll(0)
+#     except Exception as e:
+#         print(f"   ❌ Kafka Error: {e}")
+
+# def flatten_current_record(record):
+#     raw = record['raw']
+#     return {
+#         'city': record['city'],
+#         'timestamp': record['timestamp'],
+#         'description': record['weather'],
+#         'temp': raw['main']['temp'],
+#         'feels_like': raw['main']['feels_like'],
+#         'pressure': raw['main']['pressure'],
+#         'humidity': raw['main']['humidity'],
+#         'temp_min': raw['main']['temp_min'],
+#         'temp_max': raw['main']['temp_max'],
+#         'wind_speed': raw['wind'].get('speed', 0),
+#         'wind_deg': raw['wind'].get('deg', 0),
+#         'wind_gust': raw['wind'].get('gust', 0),
+#         'cloudiness': raw['clouds'].get('all', 0),
+#         'visibility': raw.get('visibility', 0)
+#     }
+
+# def append_to_s3_parquet(new_records_list, city):
+#     if not new_records_list:
+#         return
+
+#     file_key = f"weather_data/{city}.parquet"
+#     new_df = pd.DataFrame(new_records_list)
+    
+#     # Use mixed format to handle different ISO strings safely
+#     new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], format='mixed')
+#     new_df['timestamp'] = new_df['timestamp'] + timedelta(hours=7)
+
+#     try:
+#         obj = s3.get_object(Bucket=S3_BUCKET_NAME, Key=file_key)
+#         existing_df = pd.read_parquet(io.BytesIO(obj['Body'].read()))
+#         existing_df['timestamp'] = pd.to_datetime(existing_df['timestamp'], format='mixed')
+
+#         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+#         # Drop duplicates by timestamp to keep data clean
+#         combined_df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)    
+#         combined_df.sort_values(by='timestamp', inplace=True)
+        
+#         print(f"Existing file found. Total rows: {len(combined_df)}")
+
+#     except ClientError as e:
+#         if e.response['Error']['Code'] == "NoSuchKey":
+#             print(f"   Creating new Parquet file for {city}")
+#             combined_df = new_df
+#             combined_df.sort_values(by='timestamp', inplace=True)
+#         else:
+#             print(f"   ❌ S3 Read Error: {e}")
+#             return
+
+#     try:
+#         out_buffer = io.BytesIO()
+#         combined_df.to_parquet(out_buffer, index=False, engine='pyarrow')
+#         s3.put_object(Bucket=S3_BUCKET_NAME, Key=file_key, Body=out_buffer.getvalue())
+#         print(f"   💾 S3: Updated {file_key}")
+#     except Exception as e:
+#         print(f"   ❌ S3 Write Failed: {e}")
 
 def main():
-    print(f"🚀 Producer Started (Parquet + Rolling 24h History)")
-    print(f"   Target S3: {S3_BUCKET_NAME}/weather_data/")
+    print(f"Target S3: {S3_BUCKET_NAME}/weather_data/")
     
-    # while True:
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting Batch...")
-    for city in CITY_LIST:
-        print(f"➡️  Processing {city}...")
+    while True:
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting Batch...")
+        for city in CITY_LIST:
+            print(f"Processing {city}...")
+            # 2. Fetch Rolling 24h History and push to S3
+            fetch_weather_24h(city)
         
-        # 1. Fetch Current
-        current_raw = fetch_weather_current(city)
-        
-        # 2. Fetch Rolling 24h History
-        history_rows = fetch_weather_24h(city)
-        
-        s3_batch = []
-        if history_rows:
-            s3_batch.extend(history_rows)
-        
-        if current_raw:
-            send_to_kafka(current_raw)
-            flat_current = flatten_current_record(current_raw)
-            s3_batch.append(flat_current)
-        
-        # 3. Write to S3
-        if s3_batch:
-            append_to_s3_parquet(s3_batch, city)
-    
-    if kafka_available:
-        producer.flush()
-        
-    print("Sleeping 60s...")
-    time.sleep(60)
+        # if kafka_available:
+        #     producer.flush()
+        print("45 minutes sleep...")
+        time.sleep(60*45)
 
 if __name__ == "__main__":
     main()

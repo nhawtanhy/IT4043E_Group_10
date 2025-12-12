@@ -1,40 +1,42 @@
 services:
-  # zookeeper:
-  #   image: confluentinc/cp-zookeeper:7.6.1
-  #   container_name: zookeeper
-  #   environment:
-  #     ZOOKEEPER_CLIENT_PORT: 2181
-  #     ZOOKEEPER_TICK_TIME: 2000
-  #   networks:
-  #     - weather-net
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - weather-net
 
-  # kafka:
-  #   image: confluentinc/cp-kafka:7.6.1
-  #   container_name: kafka
-  #   depends_on:
-  #     - zookeeper
-  #   ports:
-  #     - "9092:9092"
-  #   environment:
-  #     KAFKA_BROKER_ID: 1
-  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-  #     # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-  #     # KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-  #     # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
 
-  #     KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
 
-  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-  #   networks:
-  #     - weather-net
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+    networks:
+      - weather-net
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: elasticsearch
     environment:
+      - logger.level=ERROR
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
       - "9201:9200" # tránh conflict với ES local
     networks:
@@ -42,29 +44,37 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
-    logging: 
-      driver: none
+    mem_limit: 1g
     container_name: kibana
     ports:
       - "5601:5601"
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      LOGGING_ROOT_LEVEL: fatal
     depends_on:
       - elasticsearch
     networks:
       - weather-net
-
-  # weather-producer:
-  #   build:
-  #     context: ./weather_producer
-  #   container_name: weather-producer
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     - kafka
-  #   networks:
-  #     - weather-net
-
+  weather-producer:
+    build:
+      context: ./weather_producer
+    container_name: weather-producer
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    networks:
+      - weather-net
+  kafka-producer:
+    build:
+      context: ./kafka_producer
+    container_name: kafka-producer
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    networks:
+      - weather-net
   # spark-master:
   #   build:
   #     context: ./spark_batcher
@@ -99,19 +109,17 @@ services:
   #   command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
   #   networks:
   #     - weather-net
-  # spark-streamer:
-  #   build:
-  #     context: .
-  #     dockerfile: spark.Dockerfile
-  #   volumes:
-  #     - ./spark_stream.py:/app/spark_stream.py
-  #   container_name: spark-streamer
-  #   depends_on:
-  #     - kafka
-  #     - elasticsearch
-  #   networks:
-  #     - weather-net
-
+  spark-streamer:
+    build:
+      context: ./spark_streamer
+    # volumes:
+    #   - ./spark_stream.py:/app/spark_stream.py
+    container_name: spark-streamer
+    depends_on:
+      - kafka
+      - elasticsearch
+    networks:
+      - weather-net
   spark-batcher:
     build:
       context: ./spark_batcher      # Folder containing Dockerfile + script
@@ -124,10 +132,6 @@ services:
       - .env
     networks:
       - weather-net
-
-    volumes:
-      # This overrides the script inside the container for development
-      - ./spark_batcher/spark_batch.py:/app/spark_batch.py
 
 networks:
   weather-net:

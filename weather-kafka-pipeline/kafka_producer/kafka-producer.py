@@ -1,0 +1,72 @@
+import os
+import requests
+import json
+import time
+from datetime import datetime
+from confluent_kafka import Producer
+
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
+TOPIC = "weather_raw"
+API_KEY = os.getenv("OPENWEATHER_API_KEY")
+CITY_LIST = ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]
+
+try:
+    producer = Producer({
+        "bootstrap.servers": KAFKA_BROKER,
+        "socket.timeout.ms": 5000
+    })
+    kafka_available = True
+except Exception as e:
+    print(f"⚠️ Kafka not available: {e}")
+    kafka_available = False
+
+def fetch_weather_current(city):
+    """Fetches CURRENT weather data for Kafka."""
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            
+            # Floor to current hour for alignment
+            now = datetime.utcnow()
+            current_hour = now.replace(minute=0, second=0, microsecond=0)
+            
+            return {
+                "city": city,
+                "timestamp": current_hour.isoformat(),
+                "temperature": data["main"]["temp"],
+                "humidity": data["main"]["humidity"],
+                "weather": data["weather"][0]["description"],
+                "raw": data 
+            }
+        print(f"[WARN] API {res.status_code} for {city}")
+    except Exception as e:
+        print(f"[ERROR] API Request failed: {e}")
+    return None
+
+def send_to_kafka(record):
+    if not kafka_available or not record:
+        return
+    try:
+        producer.produce(
+            TOPIC,
+            key=record['city'].encode("utf-8"),
+            value=json.dumps(record).encode("utf-8")
+        )
+        producer.poll(0)
+    except Exception as e:
+        print(f"   ❌ Kafka Error: {e}")
+
+def main():
+    while True:
+        for city in CITY_LIST:
+            # 1. Fetch Current
+            current_raw = fetch_weather_current(city)
+            send_to_kafka(current_raw)
+        if kafka_available:
+            producer.flush()
+            time.sleep(60)
+
+if __name__ == "__main__":
+    main()
