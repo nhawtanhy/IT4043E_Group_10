@@ -58,15 +58,36 @@ def send_to_kafka(record):
     except Exception as e:
         print(f"   ❌ Kafka Error: {e}")
 
+def flatten_record(record):
+    raw = record['raw']
+    return {
+        'city': record['city'],
+        'timestamp': record['timestamp'],
+        'description': record['weather'],
+        'temp': raw['main']['temp'],
+        'feels_like': raw['main']['feels_like'],
+        'pressure': raw['main']['pressure'],
+        'humidity': raw['main']['humidity'],
+        'temp_min': raw['main']['temp_min'],
+        'temp_max': raw['main']['temp_max'],
+        'wind_speed': raw['wind'].get('speed', 0),
+        'wind_deg': raw['wind'].get('deg', 0),
+        'wind_gust': raw['wind'].get('gust', 0),
+        'cloudiness': raw['clouds'].get('all', 0),
+        'visibility': raw.get('visibility', 0)
+    }
+
 def main():
     while True:
         for city in CITY_LIST:
             # 1. Fetch Current
-            current_raw = fetch_weather_current(city)
-            send_to_kafka(current_raw)
+            raw_data = fetch_weather_current(city)
+            if raw_data:
+                flat_data = flatten_record(raw_data)
+                send_to_kafka(flat_data)
         if kafka_available:
             producer.flush()
-            time.sleep(60)
+        time.sleep(60)
 
 if __name__ == "__main__":
     main()

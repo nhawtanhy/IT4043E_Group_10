@@ -168,19 +168,6 @@ def fetch_weather_24h(city):
     except Exception as e:
         print(f"   ❌ S3 Write Failed: {e}")
 
-# def send_to_kafka(record):
-#     if not kafka_available or not record:
-#         return
-#     try:
-#         producer.produce(
-#             TOPIC,
-#             key=record['city'].encode("utf-8"),
-#             value=json.dumps(record).encode("utf-8")
-#         )
-#         producer.poll(0)
-#     except Exception as e:
-#         print(f"   ❌ Kafka Error: {e}")
-
 # def flatten_current_record(record):
 #     raw = record['raw']
 #     return {
