@@ -1,11 +1,7 @@
 import os
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    avg,
-    col,
-    when,
-)
+from pyspark.sql.functions import avg, col, when
 from pyspark.sql.types import DoubleType, StringType
 from pyspark.sql.window import Window
 
@@ -17,13 +13,54 @@ APP_NAME = os.getenv("APP_NAME", "weather-silver")
 
 S3_INPUT = os.getenv(
     "S3_INPUT",
-    "s3a://hust-bucket-storage/weather_silver/",
+    "s3a://hust-bucket-storage/weather_silver",
 )
 
 SILVER_PATH = os.getenv(
     "SILVER_PATH",
     "/data/silver/weather",
 )
+
+# =====================================================
+# CITY LIST (HARD-CODED)
+# =====================================================
+
+CITY_LIST = [
+    "An Giang",
+    "Bac Ninh",
+    "Buon Ma Thuot",
+    "Ca Mau",
+    "Cam Pha Mines",
+    "Can Gio",
+    "Can Tho",
+    "Cao Bang",
+    "Cao Lanh",
+    "Da Lat",
+    "Da Nang",
+    "Dien Bien Phu",
+    "Gia Lai",
+    "Haiphong",
+    "Hanoi",
+    "Hà Tĩnh",
+    "Ho Chi Minh City",
+    "Hue",
+    "Hung Yen",
+    "Khánh Hòa",
+    "Lai Chau",
+    "Lang Son",
+    "Lao Cai",
+    "Ninh Binh",
+    "Phu Tho",
+    "Quang Ngai",
+    "Quảng Trị",
+    "Son La",
+    "Tay Ninh",
+    "Thai Nguyen",
+    "Thanh Hoa",
+    "Tuyen Quang",
+    "Vinh",
+    "Vinh Long",
+]
 
 # =====================================================
 # Spark Session
@@ -34,23 +71,28 @@ spark = (
     .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
     .getOrCreate()
 )
+
 spark.sparkContext.setLogLevel("WARN")
 
-print(f"📥 Reading from: {S3_INPUT}")
-print(f"📤 Writing silver to: {SILVER_PATH}")
+print(f"📥 Reading from S3: {S3_INPUT}")
+print(f"📤 Writing Silver to: {SILVER_PATH}")
 
 # =====================================================
-# 1️⃣ READ PARQUET (Clean Bronze-from-S3)
+# 1️⃣ READ PARQUET FILES (ALL CITIES)
 # =====================================================
 
-files = [
-    f"{S3_INPUT}/Hanoi.parquet",
-    f"{S3_INPUT}/Da Nang.parquet",
-    f"{S3_INPUT}/Haiphong.parquet",
-    f"{S3_INPUT}/Can Tho.parquet",
-    f"{S3_INPUT}/Ho Chi Minh City.parquet",
-]
-df = spark.read.parquet(*files)
+from pyspark.sql.utils import AnalysisException
+
+valid_files = []
+for city in CITY_LIST:
+    path = f"{S3_INPUT}/{city}.parquet"
+    try:
+        spark.read.parquet(path).limit(1)
+        valid_files.append(path)
+    except AnalysisException:
+        print(f"⚠️ Missing file: {path}")
+
+df = spark.read.parquet(*valid_files)
 
 # =====================================================
 # 2️⃣ BASIC CLEAN + TYPE NORMALIZATION
@@ -78,17 +120,15 @@ base = (
 # 3️⃣ BUSINESS LOGIC (DERIVED FEATURES)
 # =====================================================
 
-# 🌡️ Temperature category (business rule)
 base = base.withColumn(
     "temp_category",
     when(col("temp") < 20, "cold").when(col("temp") < 30, "warm").otherwise("hot"),
 )
 
 # =====================================================
-# 4️⃣ WINDOW AGGREGATIONS (INTERMEDIATE SPARK SKILL)
+# 4️⃣ WINDOW AGGREGATION (24H ROLLING AVG)
 # =====================================================
 
-# Rolling 24h average temperature per city
 w_24h = (
     Window.partitionBy("city")
     .orderBy(col("timestamp").cast("long"))
@@ -104,21 +144,18 @@ silver = base.withColumn(
 # 5️⃣ PERFORMANCE OPTIMIZATION
 # =====================================================
 
-# Repartition by city → better downstream joins
 silver = silver.repartition("city")
-
-# Cache because Silver is reused by Gold
 silver.cache()
 
-# Materialize cache (important for teaching/demo)
-silver.count()
-print("🔍 Silver count:", silver.count())
+count = silver.count()
+print(f"🔍 Silver record count: {count}")
 
-silver.groupBy("city").count().show()
+silver.groupBy("city").count().show(truncate=False)
 
 # =====================================================
-# 6️⃣ WRITE SILVER (PARTITIONED)
+# 6️⃣ WRITE SILVER (PARTITIONED BY CITY)
 # =====================================================
+
 (silver.write.mode("overwrite").partitionBy("city").parquet(SILVER_PATH))
 
 print("✅ Silver job completed successfully")
