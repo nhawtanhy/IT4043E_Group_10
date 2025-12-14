@@ -84,19 +84,23 @@ if last_ts:
     df = df.filter(col("timestamp") > last_ts)
 
 if df.rdd.isEmpty():
-    print("No new Silver data. Exit.")
+    print("ℹ️ No new Silver data. Exit.")
     spark.stop()
     raise SystemExit(0)
 
 
 # =====================================================
 # 4️⃣ HOURLY BASE AGGREGATIONS
+#    - adapt to schema: wind_gust may not exist in Silver
 # =====================================================
+has_wind_gust = "wind_gust" in df.columns
+
 agg_exprs = [
     # Temperature
     avg("temp").alias("avg_temp"),
     spark_min("temp").alias("min_temp"),
     spark_max("temp").alias("max_temp"),
+    avg("avg_temp_24h").alias("avg_temp_24h"),
     # Humidity
     avg("humidity").alias("avg_humidity"),
     spark_min("humidity").alias("min_humidity"),
@@ -114,13 +118,21 @@ agg_exprs = [
     count("*").alias("records"),
 ]
 
+if has_wind_gust:
+    agg_exprs.append(spark_max("wind_gust").alias("max_wind_gust"))
+
 gold_base = (
     df.groupBy(window(col("timestamp"), "1 hour"), col("city"))
     .agg(*agg_exprs)
     .withColumn("temp_range", col("max_temp") - col("min_temp"))
     .withColumn("humidity_range", col("max_humidity") - col("min_humidity"))
     .withColumn("pressure_range", col("max_pressure") - col("min_pressure"))
+    .withColumn("temp_vs_24h", col("avg_temp") - col("avg_temp_24h"))
 )
+
+# If wind_gust doesn't exist, create a consistent column for downstream usage
+if not has_wind_gust:
+    gold_base = gold_base.withColumn("max_wind_gust", lit(None).cast("double"))
 
 gold_base = gold_base.select(
     col("city"),
@@ -130,6 +142,8 @@ gold_base = gold_base.select(
     "min_temp",
     "max_temp",
     "temp_range",
+    "avg_temp_24h",
+    "temp_vs_24h",
     # Humidity
     "avg_humidity",
     "min_humidity",
@@ -143,6 +157,7 @@ gold_base = gold_base.select(
     # Wind
     "avg_wind_speed",
     "max_wind_speed",
+    "max_wind_gust",
     "avg_wind_deg",
     # Cloud
     "avg_cloudiness",
@@ -176,19 +191,42 @@ gold = gold_base.join(dominant_desc, on=["city", "@timestamp"], how="left")
 
 
 # =====================================================
-# 6️⃣ RULE-BASED FLAGS (DASHBOARD ALERTS)
+# 6️⃣ SEMANTIC WIND DIRECTION
+# =====================================================
+gold = gold.withColumn(
+    "wind_direction",
+    when((col("avg_wind_deg") >= 337.5) | (col("avg_wind_deg") < 22.5), "N")
+    .when(col("avg_wind_deg") < 67.5, "NE")
+    .when(col("avg_wind_deg") < 112.5, "E")
+    .when(col("avg_wind_deg") < 157.5, "SE")
+    .when(col("avg_wind_deg") < 202.5, "S")
+    .when(col("avg_wind_deg") < 247.5, "SW")
+    .when(col("avg_wind_deg") < 292.5, "W")
+    .otherwise("NW"),
+)
+
+
+# =====================================================
+# 7️⃣ RULE-BASED FLAGS (DASHBOARD ALERTS)
 # =====================================================
 gold = (
     gold.withColumn("unstable_temp", (col("temp_range") > 5).cast("boolean"))
     .withColumn("unstable_humidity", (col("humidity_range") > 20).cast("boolean"))
     .withColumn("pressure_drop", (col("pressure_range") > 3).cast("boolean"))
     .withColumn("strong_wind", (col("max_wind_speed") > 10).cast("boolean"))
+    # If max_wind_gust is null (no wind_gust in Silver), this becomes false
+    .withColumn(
+        "wind_gust_event",
+        when(col("max_wind_gust").isNull(), lit(False))
+        .otherwise((col("max_wind_gust") > 15))
+        .cast("boolean"),
+    )
     .withColumn("data_gap", (col("records") < 50).cast("boolean"))
 )
 
 
 # =====================================================
-# 7️⃣ FIX @timestamp FORMAT FOR ELASTICSEARCH
+# 8️⃣ FIX @timestamp FORMAT FOR ELASTICSEARCH
 # =====================================================
 gold = gold.withColumn(
     "@timestamp", date_format(col("@timestamp"), "yyyy-MM-dd'T'HH:mm:ss")
@@ -196,7 +234,7 @@ gold = gold.withColumn(
 
 
 # =====================================================
-# 8️⃣ WRITE TO ELASTICSEARCH
+# 9️⃣ WRITE TO ELASTICSEARCH
 # =====================================================
 es_options = {
     "es.nodes": f"http://{ES_NODES}",
@@ -217,7 +255,7 @@ es_options = {
 
 
 # =====================================================
-# 9️⃣ UPDATE INCREMENTAL STATE
+# 🔟 UPDATE INCREMENTAL STATE
 # =====================================================
 new_ts = gold.select("@timestamp").agg(spark_max(col("@timestamp"))).collect()[0][0]
 

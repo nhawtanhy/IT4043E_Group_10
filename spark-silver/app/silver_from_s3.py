@@ -17,7 +17,7 @@ APP_NAME = os.getenv("APP_NAME", "weather-silver")
 
 S3_INPUT = os.getenv(
     "S3_INPUT",
-    "data/s3/weather_for_silver/",
+    "s3a://hust-bucket-storage/weather_silver/",
 )
 
 SILVER_PATH = os.getenv(
@@ -41,7 +41,6 @@ print(f"📤 Writing silver to: {SILVER_PATH}")
 
 # =====================================================
 # 1️⃣ READ PARQUET (Clean Bronze-from-S3)
-# (Large cities go first for debugging reasons)
 # =====================================================
 
 files = [
@@ -76,11 +75,37 @@ base = (
 )
 
 # =====================================================
-# 3️⃣ PERFORMANCE OPTIMIZATION
+# 3️⃣ BUSINESS LOGIC (DERIVED FEATURES)
+# =====================================================
+
+# 🌡️ Temperature category (business rule)
+base = base.withColumn(
+    "temp_category",
+    when(col("temp") < 20, "cold").when(col("temp") < 30, "warm").otherwise("hot"),
+)
+
+# =====================================================
+# 4️⃣ WINDOW AGGREGATIONS (INTERMEDIATE SPARK SKILL)
+# =====================================================
+
+# Rolling 24h average temperature per city
+w_24h = (
+    Window.partitionBy("city")
+    .orderBy(col("timestamp").cast("long"))
+    .rowsBetween(-23, 0)
+)
+
+silver = base.withColumn(
+    "avg_temp_24h",
+    avg("temp").over(w_24h),
+)
+
+# =====================================================
+# 5️⃣ PERFORMANCE OPTIMIZATION
 # =====================================================
 
 # Repartition by city → better downstream joins
-silver = base.repartition("city")
+silver = silver.repartition("city")
 
 # Cache because Silver is reused by Gold
 silver.cache()
@@ -92,7 +117,7 @@ print("🔍 Silver count:", silver.count())
 silver.groupBy("city").count().show()
 
 # =====================================================
-# 4️⃣ WRITE SILVER (PARTITIONED)
+# 6️⃣ WRITE SILVER (PARTITIONED)
 # =====================================================
 (silver.write.mode("overwrite").partitionBy("city").parquet(SILVER_PATH))
 
