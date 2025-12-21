@@ -2,7 +2,7 @@ import os
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from confluent_kafka import Producer
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
@@ -28,13 +28,13 @@ def fetch_weather_current(city):
         if res.status_code == 200:
             data = res.json()
             
-            # Floor to current hour for alignment
+            # Change type
             now = datetime.utcnow()
-            current_hour = now.replace(minute=0, second=0, microsecond=0)
+            now = now + timedelta(hours=7)
             
             return {
                 "city": city,
-                "timestamp": current_hour.isoformat(),
+                "timestamp": now.isoformat(),
                 "temperature": data["main"]["temp"],
                 "humidity": data["main"]["humidity"],
                 "weather": data["weather"][0]["description"],
@@ -65,16 +65,12 @@ def flatten_record(record):
         'timestamp': record['timestamp'],
         'description': record['weather'],
         'temp': raw['main']['temp'],
-        'feels_like': raw['main']['feels_like'],
         'pressure': raw['main']['pressure'],
         'humidity': raw['main']['humidity'],
-        'temp_min': raw['main']['temp_min'],
-        'temp_max': raw['main']['temp_max'],
         'wind_speed': raw['wind'].get('speed', 0),
         'wind_deg': raw['wind'].get('deg', 0),
         'wind_gust': raw['wind'].get('gust', 0),
-        'cloudiness': raw['clouds'].get('all', 0),
-        'visibility': raw.get('visibility', 0)
+        'cloudiness': raw['clouds'].get('all', 0)
     }
 
 def main():
@@ -86,6 +82,7 @@ def main():
                 flat_data = flatten_record(raw_data)
                 send_to_kafka(flat_data)
         if kafka_available:
+            # Debug: After the first run there are 5 items in producer.
             producer.flush()
         time.sleep(60)
 

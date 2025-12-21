@@ -55,16 +55,16 @@ services:
       - elasticsearch
     networks:
       - weather-net
-  weather-producer:
-    build:
-      context: ./weather_producer
-    container_name: weather-producer
-    env_file:
-      - .env
-    depends_on:
-      - kafka
-    networks:
-      - weather-net
+  # weather-producer:
+  #   build:
+  #     context: ./weather_producer
+  #   container_name: weather-producer
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     - kafka
+  #   networks:
+  #     - weather-net
   kafka-producer:
     build:
       context: ./kafka_producer
@@ -125,8 +125,7 @@ services:
       context: ./spark_batcher      # Folder containing Dockerfile + script
     container_name: spark-batcher
     depends_on:
-    #   - kafka
-      # - weather-producer
+      - kafka
       - elasticsearch
     env_file:
       - .env

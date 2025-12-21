@@ -41,6 +41,23 @@ RUN curl -L -o /opt/spark/jars/s3-2.18.41.jar \
 
 # ---------------------------------------
 
+# Kafka connectors
+# Kafka datasource connector
+RUN curl -L -o /opt/spark/jars/spark-sql-kafka-0-10_2.12-${SPARK_VERSION}.jar \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/${SPARK_VERSION}/spark-sql-kafka-0-10_2.12-${SPARK_VERSION}.jar
+
+# Kafka client
+RUN curl -L -o /opt/spark/jars/kafka-clients-3.5.1.jar \
+    https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+
+# Spark Token Provider (bắt buộc)
+RUN curl -L -o /opt/spark/jars/spark-token-provider-kafka-0-10_2.12-${SPARK_VERSION}.jar \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/${SPARK_VERSION}/spark-token-provider-kafka-0-10_2.12-${SPARK_VERSION}.jar
+#----------------------
+
+RUN curl -L -o /opt/spark/jars/commons-pool2-2.11.1.jar \
+    https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
+
 # ----------- Elasticsearch connector ----------
 RUN curl -L -o /opt/spark/jars/elasticsearch-spark-30_2.12-8.11.0.jar \
     https://repo1.maven.org/maven2/org/elasticsearch/elasticsearch-spark-30_2.12/8.11.0/elasticsearch-spark-30_2.12-8.11.0.jar
@@ -51,6 +68,10 @@ RUN curl -L -o /opt/spark/jars/elasticsearch-spark-30_2.12-8.11.0.jar \
 FROM spark-base AS spark-runner
 
 WORKDIR /app
-COPY spark_batch.py .     
+  
+COPY requirements.txt .
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
+
+COPY spark_batch.py . 
 
 CMD ["spark-submit", "--master", "local[*]", "/app/spark_batch.py"]
