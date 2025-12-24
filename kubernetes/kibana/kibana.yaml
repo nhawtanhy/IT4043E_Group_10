@@ -1,0 +1,28 @@
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: kibana-weather
+  namespace: observability
+spec:
+  version: 7.17.9
+  count: 1
+
+  elasticsearchRef:
+    name: es-weather
+
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true # dễ port-forward, debug
+
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi

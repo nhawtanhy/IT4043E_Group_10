@@ -1,0 +1,63 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: bronze-to-es-batch
+  namespace: default
+spec:
+  type: Python
+  mode: cluster
+  sparkVersion: 3.3.3
+
+  # deps:
+  #   packages:
+  #     - org.elasticsearch:elasticsearch-spark-30_2.12:8.11.3
+
+  image: spark-weather-bronze:3.3.3-r6
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/bronze_to_es_batch.py
+
+  restartPolicy:
+    type: Never
+
+  sparkConf:
+    spark.jars.ivy: /tmp/.ivy
+    spark.kubernetes.file.upload.path: /tmp/spark-upload
+
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    env:
+      - name: BRONZE_PATH
+        value: /checkpoint/bronze_parquet
+      - name: STATE_PATH
+        value: /checkpoint/batch_state
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+      - name: ES_INDEX
+        value: weather-raw
+      - name: LOG_LEVEL
+        value: WARN
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  executor:
+    instances: 2
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  volumes:
+    - name: checkpoint
+      persistentVolumeClaim:
+        claimName: spark-checkpoint-pvc

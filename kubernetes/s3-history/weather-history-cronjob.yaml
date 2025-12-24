@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weather-history-to-s3
+  namespace: data
+spec:
+  schedule: "*/45 * * * *" # mỗi 45 phút
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+            - name: s3-history
+              image: weather-s3-history:latest
+              imagePullPolicy: IfNotPresent
+
+              env:
+                - name: S3_BUCKET_NAME
+                  value: hust-bucket-storage
+
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-secret
+                      key: access-key
+
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-secret
+                      key: secret-key
+
+                - name: AWS_DEFAULT_REGION
+                  value: ap-southeast-1

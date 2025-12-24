@@ -1,0 +1,89 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: weather-streaming
+  namespace: default
+
+spec:
+  type: Python
+  mode: cluster
+  sparkVersion: 3.3.3
+
+  image: spark-weather-kafka:3.3.3-r1
+  imagePullPolicy: IfNotPresent
+
+  mainApplicationFile: local:///app/stream_weather.py
+
+  restartPolicy:
+    type: Always
+
+  deps:
+    packages:
+      - org.elasticsearch:elasticsearch-spark-30_2.12:8.11.3
+
+  sparkConf:
+    spark.jars.ivy: /tmp/.ivy
+    spark.kubernetes.file.upload.path: /tmp/spark-upload
+    spark.sql.streaming.stopGracefullyOnShutdown: "true"
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kafka.bootstrap.servers: kafka-kafka-bootstrap.data:9092
+
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+
+    env:
+      - name: KAFKA_BOOTSTRAP
+        value: kafka-kafka-bootstrap.data.svc.cluster.local:9092
+      - name: KAFKA_TOPIC
+        value: weather-raw
+      - name: CHECKPOINT
+        value: /checkpoint/weather-raw
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+      - name: LOG_LEVEL
+        value: WARN
+      - name: MAX_OFFSETS
+        value: "5000"
+
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  executor:
+    instances: 2
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+
+    env:
+      - name: KAFKA_BOOTSTRAP
+        value: kafka-kafka-bootstrap.data.svc.cluster.local:9092
+      - name: KAFKA_TOPIC
+        value: weather-raw
+      - name: CHECKPOINT
+        value: /checkpoint/weather-raw
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  volumes:
+    - name: checkpoint
+      persistentVolumeClaim:
+        claimName: spark-checkpoint-pvc

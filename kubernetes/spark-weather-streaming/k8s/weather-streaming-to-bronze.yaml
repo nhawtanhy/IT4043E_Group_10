@@ -1,0 +1,117 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: weather-streaming-to-bronze
+  namespace: default
+spec:
+  type: Python
+  mode: cluster
+  sparkVersion: 3.3.3
+
+  image: spark-weather-stream:3.3.3-r8
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/stream_weather_to_bronze.py
+
+  restartPolicy:
+    type: Always
+
+  sparkConf:
+    spark.sql.streaming.stopGracefullyOnShutdown: "true"
+    spark.kubernetes.executor.deleteOnTermination: "true"
+    spark.kafka.bootstrap.servers: kafka-kafka-bootstrap.data:9092
+
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    env:
+      # ================= Kafka / Bronze =================
+      - name: KAFKA_BOOTSTRAP
+        value: kafka-kafka-bootstrap.data.svc.cluster.local:9092
+      - name: KAFKA_TOPIC
+        value: weather-raw
+      - name: CHECKPOINT
+        value: /checkpoint/weather-raw
+      - name: BRONZE_PATH
+        value: /checkpoint/bronze_parquet
+      - name: MAX_OFFSETS
+        value: "5000"
+      - name: LOG_LEVEL
+        value: WARN
+
+      # ================= Elasticsearch =================
+      - name: ENABLE_ES
+        value: "true"
+      - name: ENABLE_CONSOLE
+        value: "true"
+
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_SCHEME
+        value: http
+      - name: ES_VERIFY_SSL
+        value: "false"
+
+      - name: ES_INDEX
+        value: weather-agg-10m
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  executor:
+    instances: 2
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    env:
+      # ================= Kafka / Bronze =================
+      - name: KAFKA_BOOTSTRAP
+        value: kafka-kafka-bootstrap.data.svc.cluster.local:9092
+      - name: KAFKA_TOPIC
+        value: weather-raw
+      - name: CHECKPOINT
+        value: /checkpoint/weather-raw
+      - name: BRONZE_PATH
+        value: /checkpoint/bronze_parquet
+      - name: MAX_OFFSETS
+        value: "5000"
+      - name: LOG_LEVEL
+        value: WARN
+
+      # ================= Elasticsearch =================
+      - name: ENABLE_ES
+        value: "true"
+      - name: ENABLE_CONSOLE
+        value: "false" # executor không cần in console
+
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_SCHEME
+        value: http
+      - name: ES_VERIFY_SSL
+        value: "false"
+
+      - name: ES_INDEX
+        value: weather-agg-10m
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+
+    volumeMounts:
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  volumes:
+    - name: checkpoint
+      persistentVolumeClaim:
+        claimName: spark-checkpoint-pvc
