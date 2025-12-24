@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-kafka-producer
+  namespace: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-kafka-producer
+  template:
+    metadata:
+      labels:
+        app: weather-kafka-producer
+    spec:
+      containers:
+        - name: producer
+          image: weather-kafka-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BROKER
+              value: kafka-kafka-bootstrap.data.svc.cluster.local:9092
+            - name: KAFKA_TOPIC
+              value: weather-raw
+            - name: OPENWEATHER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openweather-secret
+                  key: api-key
+            - name: POLL_INTERVAL
+              value: "60"
