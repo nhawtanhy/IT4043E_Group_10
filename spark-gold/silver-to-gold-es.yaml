@@ -1,0 +1,110 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: silver-to-gold-es-cron
+  namespace: default
+spec:
+  schedule: "10 * * * *" # chạy sau silver 10 phút
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: spark
+          restartPolicy: Never
+
+          containers:
+            - name: submit-gold-spark-job
+              image: bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl create -f - <<'EOF'
+                  apiVersion: sparkoperator.k8s.io/v1beta2
+                  kind: SparkApplication
+                  metadata:
+                    generateName: silver-to-gold-es-
+                    namespace: default
+                    annotations:
+                      sparkoperator.k8s.io/cleanup-policy: delete
+                  spec:
+                    type: Python
+                    mode: cluster
+                    sparkVersion: 3.3.3
+
+                    image: spark-weather-gold:3.3.3
+                    imagePullPolicy: IfNotPresent
+                    mainApplicationFile: local:///app/silver_to_gold_es.py
+
+                    restartPolicy:
+                      type: Never
+
+                    timeToLiveSeconds: 120
+
+                    sparkConf:
+                      spark.jars.ivy: /tmp/.ivy
+                      spark.kubernetes.file.upload.path: /tmp/spark-upload
+
+                    driver:
+                      cores: 1
+                      memory: 1g
+                      serviceAccount: spark
+                      env:
+                        - name: SILVER_PATH
+                          value: /data/silver/weather
+
+                        - name: GOLD_PATH
+                          value: /data/gold/weather_hourly
+
+                        - name: STATE_PATH
+                          value: /checkpoint/gold_state
+
+                        - name: ES_NODES
+                          value: es-weather-es-http.observability.svc.cluster.local
+                        - name: ES_PORT
+                          value: "9200"
+                        - name: ES_USER
+                          value: elastic
+                        - name: ES_PASS
+                          value: 3kc9mR6Ke158uN4bXE8Rz17a
+                        - name: ES_INDEX
+                          value: weather-gold-hourly-v2
+
+                      volumeMounts:
+                        - name: silver
+                          mountPath: /data/silver
+                        - name: gold
+                          mountPath: /data/gold
+                        - name: checkpoint
+                          mountPath: /checkpoint
+
+                    executor:
+                      instances: 2
+                      cores: 1
+                      memory: 1g
+                      serviceAccount: spark
+                      volumeMounts:
+                        - name: silver
+                          mountPath: /data/silver
+                        - name: gold
+                          mountPath: /data/gold
+                        - name: checkpoint
+                          mountPath: /checkpoint
+
+                    volumes:
+                      - name: silver
+                        persistentVolumeClaim:
+                          claimName: spark-silver-pvc
+                      - name: gold
+                        persistentVolumeClaim:
+                          claimName: spark-gold-pvc
+                      - name: checkpoint
+                        persistentVolumeClaim:
+                          claimName: spark-checkpoint-pvc
+                  EOF
