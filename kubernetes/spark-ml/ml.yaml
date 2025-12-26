@@ -1,0 +1,126 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weather-ml-inference-cron
+  namespace: default
+spec:
+  schedule: "0 * * * *" # ⏱ Mỗi 1 giờ (đúng đầu giờ)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: spark
+          restartPolicy: Never
+
+          containers:
+            - name: submit-ml-spark-job
+              image: bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl create -f - <<'EOF'
+                  apiVersion: sparkoperator.k8s.io/v1beta2
+                  kind: SparkApplication
+                  metadata:
+                    generateName: weather-ml-inference-
+                    namespace: default
+                  spec:
+                    type: Python
+                    mode: cluster
+                    sparkVersion: 3.3.3
+                    timeToLiveSeconds: 300
+
+                    image: spark-weather-ml:3.3.3-v1
+                    imagePullPolicy: IfNotPresent
+                    mainApplicationFile: local:///app/weather_ml_inference.py
+
+                    restartPolicy:
+                      type: Never
+
+                    sparkConf:
+                      # Spark submit / ivy
+                      spark.jars.ivy: /tmp/.ivy
+                      spark.kubernetes.file.upload.path: /tmp/spark-upload
+
+                      # 🔑 S3 CONFIG (GIỐNG SILVER)
+                      spark.hadoop.fs.s3a.endpoint: s3.amazonaws.com
+                      spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+                      spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
+                      spark.sql.parquet.enableVectorizedReader: "false"
+                      spark.sql.parquet.outputTimestampType: "TIMESTAMP_MICROS"
+                      spark.sql.parquet.int96RebaseModeInRead: "CORRECTED"
+                      spark.sql.parquet.datetimeRebaseModeInRead: "CORRECTED"
+
+                    driver:
+                      cores: 1
+                      memory: 512m
+                      serviceAccount: spark
+                      env:
+                        # ===== DATA SOURCES =====
+                        - name: BRONZE_PATH
+                          value: /checkpoint/bronze_parquet
+                        - name: SILVER_PATH
+                          value: s3a://hust-bucket-storage/weather_silver/
+
+                        # ===== ELASTICSEARCH =====
+                        - name: ES_NODES
+                          value: es-weather-es-http.observability.svc.cluster.local
+                        - name: ES_PORT
+                          value: "9200"
+                        - name: ES_USER
+                          value: elastic
+                        - name: ES_PASS
+                          value: 3kc9mR6Ke158uN4bXE8Rz17a
+                        - name: ES_INDEX
+                          value: weather-ml-prediction
+
+                        # ===== AWS CREDENTIALS (BẮT BUỘC) =====
+                        - name: AWS_ACCESS_KEY_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_ACCESS_KEY_ID
+                        - name: AWS_SECRET_ACCESS_KEY
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_SECRET_ACCESS_KEY
+
+                      volumeMounts:
+                        - name: checkpoint
+                          mountPath: /checkpoint
+
+                    executor:
+                      instances: 2
+                      cores: 1
+                      memory: 512m
+                      serviceAccount: spark
+                      env:
+                        # AWS CREDENTIALS CHO EXECUTOR
+                        - name: AWS_ACCESS_KEY_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_ACCESS_KEY_ID
+                        - name: AWS_SECRET_ACCESS_KEY
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_SECRET_ACCESS_KEY
+
+                      volumeMounts:
+                        - name: checkpoint
+                          mountPath: /checkpoint
+
+                    volumes:
+                      - name: checkpoint
+                        persistentVolumeClaim:
+                          claimName: spark-checkpoint-pvc
+                  EOF
