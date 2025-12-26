@@ -4,7 +4,7 @@ metadata:
   name: weather-ml-inference-cron
   namespace: default
 spec:
-  schedule: "0 * * * *" # ⏱ Mỗi 1 giờ (đúng đầu giờ)
+  schedule: "0 * * * *" # ⏱ mỗi giờ
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
@@ -31,11 +31,15 @@ spec:
                   metadata:
                     generateName: weather-ml-inference-
                     namespace: default
+                    annotations:
+                      sparkoperator.k8s.io/cleanup-policy: delete
                   spec:
                     type: Python
                     mode: cluster
                     sparkVersion: 3.3.3
-                    timeToLiveSeconds: 300
+
+                    # 🔥 THUẦN BATCH – TỰ XOÁ
+                    timeToLiveSeconds: 60
 
                     image: spark-weather-ml:3.3.3-v1
                     imagePullPolicy: IfNotPresent
@@ -45,14 +49,14 @@ spec:
                       type: Never
 
                     sparkConf:
-                      # Spark submit / ivy
                       spark.jars.ivy: /tmp/.ivy
                       spark.kubernetes.file.upload.path: /tmp/spark-upload
 
-                      # 🔑 S3 CONFIG (GIỐNG SILVER)
+                      # S3 CONFIG (GIỐNG SILVER)
                       spark.hadoop.fs.s3a.endpoint: s3.amazonaws.com
                       spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.DefaultAWSCredentialsProviderChain
                       spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
+
                       spark.sql.parquet.enableVectorizedReader: "false"
                       spark.sql.parquet.outputTimestampType: "TIMESTAMP_MICROS"
                       spark.sql.parquet.int96RebaseModeInRead: "CORRECTED"
@@ -63,13 +67,11 @@ spec:
                       memory: 512m
                       serviceAccount: spark
                       env:
-                        # ===== DATA SOURCES =====
                         - name: BRONZE_PATH
                           value: /checkpoint/bronze_parquet
                         - name: SILVER_PATH
                           value: s3a://hust-bucket-storage/weather_silver/
 
-                        # ===== ELASTICSEARCH =====
                         - name: ES_NODES
                           value: es-weather-es-http.observability.svc.cluster.local
                         - name: ES_PORT
@@ -81,7 +83,6 @@ spec:
                         - name: ES_INDEX
                           value: weather-ml-prediction
 
-                        # ===== AWS CREDENTIALS (BẮT BUỘC) =====
                         - name: AWS_ACCESS_KEY_ID
                           valueFrom:
                             secretKeyRef:
@@ -103,7 +104,6 @@ spec:
                       memory: 512m
                       serviceAccount: spark
                       env:
-                        # AWS CREDENTIALS CHO EXECUTOR
                         - name: AWS_ACCESS_KEY_ID
                           valueFrom:
                             secretKeyRef:
@@ -114,7 +114,6 @@ spec:
                             secretKeyRef:
                               name: aws-credentials
                               key: AWS_SECRET_ACCESS_KEY
-
                       volumeMounts:
                         - name: checkpoint
                           mountPath: /checkpoint
