@@ -1,74 +1,104 @@
-apiVersion: sparkoperator.k8s.io/v1beta2
-kind: SparkApplication
+apiVersion: batch/v1
+kind: CronJob
 metadata:
-  name: weather-s3-to-silver
+  name: weather-s3-to-silver-cron
   namespace: default
 spec:
-  type: Python
-  mode: cluster
-  sparkVersion: 3.3.3
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
 
-  image: spark-weather-silver:3.3.3
-  imagePullPolicy: IfNotPresent
-  mainApplicationFile: local:///app/silver_from_s3.py
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: spark
+          restartPolicy: Never
 
-  restartPolicy:
-    type: Never
+          containers:
+            - name: submit-silver-spark-job
+              image: bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl create -f - <<'EOF'
+                  apiVersion: sparkoperator.k8s.io/v1beta2
+                  kind: SparkApplication
+                  metadata:
+                    generateName: weather-s3-to-silver-
+                    namespace: default
+                    annotations:
+                      sparkoperator.k8s.io/cleanup-policy: delete
+                  spec:
+                    type: Python
+                    mode: cluster
+                    sparkVersion: 3.3.3
 
-  sparkConf:
-    spark.hadoop.fs.s3a.endpoint: s3.amazonaws.com
-    spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.DefaultAWSCredentialsProviderChain
-    spark.sql.parquet.enableVectorizedReader: "false"
-    spark.sql.parquet.outputTimestampType: "TIMESTAMP_MICROS"
-    spark.sql.parquet.int96RebaseModeInRead: "CORRECTED"
-    spark.sql.parquet.datetimeRebaseModeInRead: "CORRECTED"
+                    image: spark-weather-silver:3.3.3-r2
+                    imagePullPolicy: IfNotPresent
+                    mainApplicationFile: local:///app/silver_from_s3.py
 
-  driver:
-    cores: 1
-    memory: 1g
-    serviceAccount: spark
-    env:
-      - name: S3_INPUT
-        value: s3a://hust-bucket-storage/weather_silver/
-      - name: SILVER_PATH
-        value: /data/silver/weather
+                    restartPolicy:
+                      type: Never
 
-      - name: AWS_ACCESS_KEY_ID
-        valueFrom:
-          secretKeyRef:
-            name: aws-credentials
-            key: AWS_ACCESS_KEY_ID
-      - name: AWS_SECRET_ACCESS_KEY
-        valueFrom:
-          secretKeyRef:
-            name: aws-credentials
-            key: AWS_SECRET_ACCESS_KEY
+                    # 🔥 tự xoá sau khi COMPLETE
+                    timeToLiveSeconds: 60
 
-    volumeMounts:
-      - name: silver
-        mountPath: /data/silver
+                    sparkConf:
+                      spark.hadoop.fs.s3a.endpoint: s3.amazonaws.com
+                      spark.hadoop.fs.s3a.aws.credentials.provider: com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+                      spark.jars.ivy: /tmp/.ivy
+                      spark.kubernetes.file.upload.path: /tmp/spark-upload
 
-  executor:
-    instances: 2
-    cores: 1
-    memory: 1g
-    serviceAccount: spark
-    env:
-      - name: AWS_ACCESS_KEY_ID
-        valueFrom:
-          secretKeyRef:
-            name: aws-credentials
-            key: AWS_ACCESS_KEY_ID
-      - name: AWS_SECRET_ACCESS_KEY
-        valueFrom:
-          secretKeyRef:
-            name: aws-credentials
-            key: AWS_SECRET_ACCESS_KEY
-    volumeMounts:
-      - name: silver
-        mountPath: /data/silver
+                    driver:
+                      cores: 1
+                      memory: 1g
+                      serviceAccount: spark
+                      env:
+                        - name: S3_INPUT
+                          value: s3a://hust-bucket-storage/weather_silver/
+                        - name: SILVER_PATH
+                          value: /data/silver/weather
+                        - name: AWS_ACCESS_KEY_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_ACCESS_KEY_ID
+                        - name: AWS_SECRET_ACCESS_KEY
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_SECRET_ACCESS_KEY
+                      volumeMounts:
+                        - name: silver
+                          mountPath: /data/silver
 
-  volumes:
-    - name: silver
-      persistentVolumeClaim:
-        claimName: spark-silver-pvc
+                    executor:
+                      instances: 2
+                      cores: 1
+                      memory: 1g
+                      serviceAccount: spark
+                      env:
+                        - name: AWS_ACCESS_KEY_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_ACCESS_KEY_ID
+                        - name: AWS_SECRET_ACCESS_KEY
+                          valueFrom:
+                            secretKeyRef:
+                              name: aws-credentials
+                              key: AWS_SECRET_ACCESS_KEY
+                      volumeMounts:
+                        - name: silver
+                          mountPath: /data/silver
+
+                    volumes:
+                      - name: silver
+                        persistentVolumeClaim:
+                          claimName: spark-silver-pvc
+                  EOF
