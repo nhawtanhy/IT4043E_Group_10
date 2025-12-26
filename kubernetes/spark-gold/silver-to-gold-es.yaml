@@ -1,0 +1,87 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: silver-to-gold-es
+  namespace: default
+spec:
+  type: Python
+  mode: cluster
+  sparkVersion: 3.3.3
+
+  image: spark-weather-gold:3.3.3
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/silver_to_gold_es.py
+
+  restartPolicy:
+    type: Never
+
+  sparkConf:
+    spark.jars.ivy: /tmp/.ivy
+    spark.kubernetes.file.upload.path: /tmp/spark-upload
+
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    env:
+      - name: SILVER_PATH
+        value: /data/silver/weather
+
+      # 👉 Gold output (NEW – cực quan trọng)
+      - name: GOLD_PATH
+        value: /data/gold/weather_hourly
+
+      - name: STATE_PATH
+        value: /checkpoint/gold_state
+
+      - name: ES_NODES
+        value: es-weather-es-http.observability.svc.cluster.local
+      - name: ES_PORT
+        value: "9200"
+      - name: ES_USER
+        value: elastic
+      - name: ES_PASS
+        value: 3kc9mR6Ke158uN4bXE8Rz17a
+      - name: ES_INDEX
+        value: weather-gold-hourly-auto
+
+    volumeMounts:
+      - name: silver
+        mountPath: /data/silver
+
+      # 👉 Gold PVC mount
+      - name: gold
+        mountPath: /data/gold
+
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  executor:
+    instances: 2
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    volumeMounts:
+      - name: silver
+        mountPath: /data/silver
+
+      # 👉 Gold PVC mount
+      - name: gold
+        mountPath: /data/gold
+
+      - name: checkpoint
+        mountPath: /checkpoint
+
+  volumes:
+    - name: silver
+      persistentVolumeClaim:
+        claimName: spark-silver-pvc
+
+    # 👉 Gold PVC (NEW)
+    - name: gold
+      persistentVolumeClaim:
+        claimName: spark-gold-pvc
+
+    - name: checkpoint
+      persistentVolumeClaim:
+        claimName: spark-checkpoint-pvc
