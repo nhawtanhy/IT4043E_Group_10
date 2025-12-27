@@ -11,18 +11,20 @@ KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 TOPIC = os.getenv("KAFKA_TOPIC", "weather-raw")
 API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
-CITY_LIST = ["Hanoi", "Ho Chi Minh City"]
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
+CITY_LIST = ["Hanoi", "Ho Chi Minh City", "Da Nang", "Haiphong", "Can Tho"]
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))  # seconds
 
 # ================= KAFKA =================
 producer = Producer(
     {
         "bootstrap.servers": KAFKA_BROKER,
+        "linger.ms": 50,
+        "acks": "all",
     }
 )
 
 # ================= WEATHER =================
-def fetch_weather(city: str):
+def fetch_weather(city: str) -> dict | None:
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {
         "q": city,
@@ -37,12 +39,20 @@ def fetch_weather(city: str):
             return None
 
         data = r.json()
-        event_time = datetime.now(timezone.utc).isoformat()
+        event_time = (
+            datetime.now(timezone.utc)
+            .replace(minute=0, second=0, microsecond=0)
+            .isoformat()
+        )
 
         return {
             "city": city,
             "event_time": event_time,
             "temp": data["main"]["temp"],
+            "humidity": data["main"]["humidity"],
+            "pressure": data["main"]["pressure"],
+            "wind_speed": data["wind"].get("speed", 0.0),
+            "weather": data["weather"][0]["description"],
         }
 
     except Exception as e:
@@ -50,16 +60,17 @@ def fetch_weather(city: str):
         return None
 
 # ================= PRODUCE =================
-def send_to_kafka(record):
+def send_to_kafka(record: dict):
     producer.produce(
         topic=TOPIC,
         key=record["city"].encode(),
         value=json.dumps(record).encode(),
     )
+    producer.poll(0)
 
 # ================= MAIN LOOP =================
 def main():
-    print(f"Weather producer started → topic={TOPIC}")
+    print(f"🚀 Weather producer started → topic={TOPIC}")
 
     while True:
         for city in CITY_LIST:
@@ -67,6 +78,7 @@ def main():
             if record:
                 send_to_kafka(record)
 
+        producer.flush()
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
