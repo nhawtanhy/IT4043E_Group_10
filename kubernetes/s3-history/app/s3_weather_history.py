@@ -139,14 +139,14 @@ def fetch_weather_24h(city: str):
             )
 
     if not rows:
-        print(f"⚠️ No data for {city}")
+        print(f"No data for {city}")
         return
 
     df = pd.DataFrame(rows)
 
     # ================= TIMESTAMP FIX (CRITICAL) =================
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df["timestamp"] = df["timestamp"].dt.floor("s")  # ❌ remove nanoseconds
+    df["timestamp"] = df["timestamp"].dt.floor("s")  # remove nanoseconds
 
     df.drop_duplicates(subset=["city", "timestamp"], inplace=True)
 
@@ -177,8 +177,8 @@ def fetch_weather_24h(city: str):
     pq.write_table(
         table,
         out,
-        coerce_timestamps="us",  # 🔥 KEY LINE
-        allow_truncated_timestamps=True,  # 🔥 avoid ns overflow
+        coerce_timestamps="us",  # KEY LINE
+        allow_truncated_timestamps=True,  # avoid ns overflow
     )
 
     s3.put_object(
@@ -187,7 +187,7 @@ def fetch_weather_24h(city: str):
         Body=out.getvalue(),
     )
 
-    print(f"✅ Silver updated: s3://{S3_BUCKET}/{key}")
+    print(f"Silver updated: s3://{S3_BUCKET}/{key}")
 
 
 def main():
@@ -195,7 +195,7 @@ def main():
         print(f"🌍 Processing {city}")
         fetch_weather_24h(city)
 
-    print("🎉 Silver batch completed successfully")
+    print("Silver batch completed successfully")
 
 
 if __name__ == "__main__":

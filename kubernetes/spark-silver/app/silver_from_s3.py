@@ -5,9 +5,8 @@ from pyspark.sql.functions import avg, col, when
 from pyspark.sql.types import DoubleType, StringType
 from pyspark.sql.window import Window
 
-# =====================================================
 # Config
-# =====================================================
+
 APP_NAME = os.getenv("APP_NAME", "weather-silver")
 
 S3_INPUT = os.getenv(
@@ -20,9 +19,9 @@ SILVER_PATH = os.getenv(
     "/data/silver/weather",
 )
 
-# =====================================================
+
 # CITY LIST (HARD-CODED)
-# =====================================================
+
 CITY_LIST = [
     "An Giang",
     "Bac Ninh",
@@ -60,9 +59,8 @@ CITY_LIST = [
     "Vinh Long",
 ]
 
-# =====================================================
 # Spark Session
-# =====================================================
+
 spark = (
     SparkSession.builder.appName(APP_NAME)
     .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
@@ -74,9 +72,9 @@ spark.sparkContext.setLogLevel("WARN")
 print(f"📥 Reading from S3: {S3_INPUT}")
 print(f"📤 Writing Silver to: {SILVER_PATH}")
 
-# =====================================================
-# 1️⃣ READ PARQUET FILES (ALL CITIES)
-# =====================================================
+
+# READ PARQUET FILES (ALL CITIES)
+
 from pyspark.sql.utils import AnalysisException
 
 valid_files = []
@@ -90,9 +88,9 @@ for city in CITY_LIST:
 
 df = spark.read.parquet(*valid_files)
 
-# =====================================================
-# 2️⃣ BASIC CLEAN + TYPE NORMALIZATION
-# =====================================================
+
+# BASIC CLEAN + TYPE NORMALIZATION
+
 base = (
     df.select(
         col("city").cast(StringType()).alias("city"),
@@ -111,17 +109,16 @@ base = (
     .dropDuplicates(["city", "timestamp"])
 )
 
-# =====================================================
-# 3️⃣ BUSINESS LOGIC (DERIVED FEATURES)
-# =====================================================
+
+# BUSINESS LOGIC (DERIVED FEATURES)
+
 base = base.withColumn(
     "temp_category",
     when(col("temp") < 20, "cold").when(col("temp") < 30, "warm").otherwise("hot"),
 )
 
-# =====================================================
-# 4️⃣ WINDOW AGGREGATION (24H ROLLING AVG)
-# =====================================================
+# WINDOW AGGREGATION (24H ROLLING AVG)
+
 w_24h = (
     Window.partitionBy("city")
     .orderBy(col("timestamp").cast("long"))
@@ -133,9 +130,9 @@ silver = base.withColumn(
     avg("temp").over(w_24h),
 )
 
-# =====================================================
-# 5️⃣ PERFORMANCE OPTIMIZATION
-# =====================================================
+
+# PERFORMANCE OPTIMIZATION
+
 silver = silver.repartition("city")
 silver.cache()
 
@@ -144,9 +141,8 @@ print(f"🔍 Silver record count: {count}")
 
 silver.groupBy("city").count().show(truncate=False)
 
-# =====================================================
-# 6️⃣ WRITE SILVER (PARTITIONED BY CITY)
-# =====================================================
+
+# WRITE SILVER (PARTITIONED BY CITY)
 (silver.write.mode("overwrite").partitionBy("city").parquet(SILVER_PATH))
 
 print("✅ Silver job completed successfully")

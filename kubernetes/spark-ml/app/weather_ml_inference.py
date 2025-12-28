@@ -5,9 +5,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-# =====================================================
 # CONFIG
-# =====================================================
 APP_NAME = os.getenv("APP_NAME", "weather-ml-inference")
 
 # Inputs
@@ -33,15 +31,15 @@ ES_USER = os.getenv("ES_USER")
 ES_PASS = os.getenv("ES_PASS")
 ES_INDEX = os.getenv("ES_INDEX", "weather-ml-prediction")
 
-# =====================================================
+
 # SPARK
-# =====================================================
+
 spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
-# =====================================================
-# 1️⃣ READ SILVER (S3 – HISTORY BACKBONE)
-# =====================================================
+
+# READ SILVER (S3 – HISTORY BACKBONE)
+
 silver = spark.read.parquet(SILVER_PATH).select(
     F.col("city"),
     F.col("timestamp").cast("timestamp"),
@@ -50,9 +48,9 @@ silver = spark.read.parquet(SILVER_PATH).select(
     F.col("pressure"),
 )
 
-# =====================================================
-# 2️⃣ READ BRONZE (REALTIME RAW)
-# =====================================================
+
+# READ BRONZE (REALTIME RAW)
+
 bronze = (
     spark.read.parquet(BRONZE_PATH)
     .withColumn("timestamp", F.to_timestamp(F.from_unixtime(F.col("dt"))))
@@ -65,9 +63,8 @@ bronze = (
     )
 )
 
-# =====================================================
-# 3️⃣ TIME WINDOW (LAST 25 HOURS)
-# =====================================================
+# TIME WINDOW (LAST 25 HOURS)
+
 time_filter = (
     F.col("timestamp") >= F.expr("current_timestamp() - INTERVAL 25 HOURS")
 ) & (F.col("timestamp") < F.expr("current_timestamp()"))
@@ -75,14 +72,12 @@ time_filter = (
 silver = silver.filter(time_filter)
 bronze = bronze.filter(time_filter)
 
-# =====================================================
-# 4️⃣ UNION + DEDUPLICATE
-# =====================================================
+
+# UNION + DEDUPLICATE
 df = silver.unionByName(bronze).dropDuplicates(["city", "timestamp"])
 
-# =====================================================
-# 5️⃣ FEATURE ENGINEERING (LAG 24H)
-# =====================================================
+# FEATURE ENGINEERING (LAG 24H)
+
 w = Window.partitionBy("city").orderBy("timestamp")
 
 for i in range(1, 25):
@@ -91,12 +86,9 @@ for i in range(1, 25):
 # Target (not used for inference, but required by pipeline schema)
 df = df.withColumn("target_future", F.lead("temp", 1).over(w)).dropna()
 
-# =====================================================
-# 6️⃣ LOAD MODEL
-# =====================================================
-# =====================================================
+
 # LOAD MODEL (ONCE – DRIVER ONLY)
-# =====================================================
+
 if not os.path.exists(MODEL_PATH):
     raise RuntimeError(f"❌ Model path not found: {MODEL_PATH}")
 
@@ -106,14 +98,13 @@ model = PipelineModel.load(MODEL_PATH)
 
 print("✅ Model loaded successfully")
 
-# =====================================================
-# 7️⃣ INFERENCE
-# =====================================================
+
+# INFERENCE
+
 pred = model.transform(df)
 
-# =====================================================
-# 8️⃣ KEEP LATEST PER CITY
-# =====================================================
+# KEEP LATEST PER CITY
+
 pred = pred.withColumn("max_ts", F.max("timestamp").over(Window.partitionBy("city")))
 
 final = pred.filter(F.col("timestamp") == F.col("max_ts")).select(
@@ -122,9 +113,9 @@ final = pred.filter(F.col("timestamp") == F.col("max_ts")).select(
     F.col("prediction").alias("pred_temp_next_hour"),
 )
 
-# =====================================================
-# 9️⃣ WRITE TO ELASTICSEARCH
-# =====================================================
+
+# WRITE TO ELASTICSEARCH
+
 es_options = {
     "es.nodes": f"http://{ES_NODES}",
     "es.port": ES_PORT,

@@ -49,31 +49,23 @@ state_dir = spark._jvm.org.apache.hadoop.fs.Path(STATE_PATH)
 state_file = spark._jvm.org.apache.hadoop.fs.Path(f"{STATE_PATH}/{STATE_FILE}")
 
 
-# =====================================================
-# 1️⃣ Check Silver existence
-# =====================================================
+# Check Silver existence
+
 if not fs.exists(silver_path):
-    print("❌ Silver path not found. Exit.")
+    print("Silver path not found. Exit.")
     spark.stop()
     raise SystemExit(0)
 
 
-# =====================================================
-# 2️⃣ Read Silver
-# =====================================================
-df = spark.read.parquet(SILVER_PATH)
+# Read Silver
 
-# (Optional) guard: ensure timestamp is timestamp type (depends on your Silver)
-# If your Silver already stores timestamp as TimestampType, keep it.
-# If it's string, uncomment:
-# df = df.withColumn("timestamp", to_timestamp(col("timestamp")))
+df = spark.read.parquet(SILVER_PATH)
 
 df = df.filter(col("timestamp").isNotNull()).filter(col("city").isNotNull())
 
 
-# =====================================================
-# 3️⃣ Load incremental state
-# =====================================================
+# Load incremental state
+
 last_ts = None
 if fs.exists(state_file):
     f = fs.open(state_file)
@@ -89,10 +81,8 @@ if df.rdd.isEmpty():
     raise SystemExit(0)
 
 
-# =====================================================
-# 4️⃣ HOURLY BASE AGGREGATIONS
+# HOURLY BASE AGGREGATIONS
 #    - adapt to schema: wind_gust may not exist in Silver
-# =====================================================
 has_wind_gust = "wind_gust" in df.columns
 
 agg_exprs = [
@@ -165,9 +155,8 @@ gold_base = gold_base.select(
 )
 
 
-# =====================================================
-# 5️⃣ DOMINANT WEATHER DESCRIPTION
-# =====================================================
+# DOMINANT WEATHER DESCRIPTION
+
 desc_dist = df.groupBy(
     window(col("timestamp"), "1 hour"),
     col("city"),
@@ -190,9 +179,8 @@ dominant_desc = (
 gold = gold_base.join(dominant_desc, on=["city", "@timestamp"], how="left")
 
 
-# =====================================================
-# 6️⃣ SEMANTIC WIND DIRECTION
-# =====================================================
+# SEMANTIC WIND DIRECTION
+
 gold = gold.withColumn(
     "wind_direction",
     when((col("avg_wind_deg") >= 337.5) | (col("avg_wind_deg") < 22.5), "N")
@@ -206,9 +194,8 @@ gold = gold.withColumn(
 )
 
 
-# =====================================================
-# 7️⃣ RULE-BASED FLAGS (DASHBOARD ALERTS)
-# =====================================================
+# RULE-BASED FLAGS (DASHBOARD ALERTS)
+
 gold = (
     gold.withColumn("unstable_temp", (col("temp_range") > 5).cast("boolean"))
     .withColumn("unstable_humidity", (col("humidity_range") > 20).cast("boolean"))
@@ -225,17 +212,15 @@ gold = (
 )
 
 
-# =====================================================
-# 8️⃣ FIX @timestamp FORMAT FOR ELASTICSEARCH
-# =====================================================
+# FIX @timestamp FORMAT FOR ELASTICSEARCH
+
 gold = gold.withColumn(
     "@timestamp", date_format(col("@timestamp"), "yyyy-MM-dd'T'HH:mm:ss")
 )
 
 
-# =====================================================
-# 9️⃣ WRITE TO ELASTICSEARCH
-# =====================================================
+# WRITE TO ELASTICSEARCH
+
 es_options = {
     "es.nodes": f"http://{ES_NODES}",
     "es.port": ES_PORT,
@@ -254,9 +239,8 @@ es_options = {
 )
 
 
-# =====================================================
-# 🔟 UPDATE INCREMENTAL STATE
-# =====================================================
+# UPDATE INCREMENTAL STATE
+
 new_ts = gold.select("@timestamp").agg(spark_max(col("@timestamp"))).collect()[0][0]
 
 fs.mkdirs(state_dir)
@@ -264,6 +248,6 @@ out = fs.create(state_file, True)
 out.writeUTF(str(new_ts))
 out.close()
 
-print("✅ Gold hourly weather analytics (FULL) written successfully")
+print("Gold hourly weather analytics (FULL) written successfully")
 
 spark.stop()

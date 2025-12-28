@@ -45,7 +45,7 @@ spec:
                     restartPolicy:
                       type: Never
 
-                    # 🔥 tự xoá sau khi COMPLETE
+                    #tự xoá sau khi COMPLETE
                     timeToLiveSeconds: 60
 
                     sparkConf:

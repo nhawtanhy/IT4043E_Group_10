@@ -76,7 +76,7 @@ def fetch_weather(city: str) -> dict | None:
 
         data = r.json()
 
-        # 🔑 Align event_time to hour (UTC)
+        # Align event_time to hour (UTC)
         event_time = (
             datetime.now(timezone.utc)
             .replace(minute=0, second=0, microsecond=0)
@@ -134,7 +134,6 @@ def fetch_weather(city: str) -> dict | None:
         return None
 
 
-# ================= PRODUCE =================
 def send_to_kafka(record: dict):
     producer.produce(
         topic=TOPIC,
@@ -144,7 +143,6 @@ def send_to_kafka(record: dict):
     producer.poll(0)
 
 
-# ================= MAIN LOOP =================
 def main():
     print(f"🚀 Weather producer started → topic={TOPIC}")
 

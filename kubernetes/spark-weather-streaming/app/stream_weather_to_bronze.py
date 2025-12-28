@@ -27,9 +27,8 @@ from pyspark.sql.types import (
     StructType,
 )
 
-# =====================================================
 # CONFIG
-# =====================================================
+
 APP_NAME = os.getenv("APP_NAME", "weather-streaming-to-bronze")
 
 KAFKA_BOOTSTRAP = os.getenv(
@@ -47,9 +46,9 @@ ES_USER = os.getenv("ES_USER")
 ES_PASS = os.getenv("ES_PASS")
 ES_INDEX = os.getenv("ES_INDEX", "weather-agg-10m-v4")
 
-# =====================================================
+
 # SPARK
-# =====================================================
+
 spark = (
     SparkSession.builder.appName(APP_NAME)
     .config("spark.sql.shuffle.partitions", "8")
@@ -57,9 +56,9 @@ spark = (
 )
 spark.sparkContext.setLogLevel("WARN")
 
-# =====================================================
+
 # SCHEMA (FULL – RAW EVENT)
-# =====================================================
+
 schema = StructType(
     [
         StructField("city", StringType()),
@@ -92,9 +91,9 @@ schema = StructType(
     ]
 )
 
-# =====================================================
-# 1️⃣ READ KAFKA
-# =====================================================
+
+# READ KAFKA
+
 raw = (
     spark.readStream.format("kafka")
     .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
@@ -108,9 +107,9 @@ parsed = raw.selectExpr("CAST(value AS STRING) AS value").withColumn(
     "json", from_json(col("value"), schema)
 )
 
-# =====================================================
-# 2️⃣ BRONZE STREAM (RAW, IMMUTABLE, FULL PAYLOAD)
-# =====================================================
+
+# BRONZE STREAM (RAW, IMMUTABLE, FULL PAYLOAD)
+
 bronze_df = parsed.select("json.*")
 
 q_bronze = (
@@ -121,9 +120,9 @@ q_bronze = (
     .start()
 )
 
-# =====================================================
-# 3️⃣ CLEAN STREAM (EVENT-TIME THỰC TỪ dt)
-# =====================================================
+
+# CLEAN STREAM (EVENT-TIME THỰC TỪ dt)
+
 clean = (
     parsed.select(
         col("json.city").alias("city"),
@@ -139,9 +138,8 @@ clean = (
 )
 
 
-# =====================================================
-# 4️⃣ WINDOW + WATERMARK (ADVANCED GOLD METRICS)
-# =====================================================
+# WINDOW + WATERMARK (ADVANCED GOLD METRICS)
+
 stateful = (
     clean.withWatermark("event_time", "15 minutes")
     .groupBy(
@@ -193,9 +191,9 @@ stateful = (
     )
 )
 
-# =====================================================
-# 5️⃣ WRITE TO ES (IDEMPOTENT UPSERT)
-# =====================================================
+
+# WRITE TO ES (IDEMPOTENT UPSERT)
+
 es_options = {
     "es.nodes": f"http://{ES_NODES}",
     "es.port": ES_PORT,
@@ -212,7 +210,7 @@ es_options = {
 def write_es(batch_df, batch_id):
     (
         batch_df
-        # 🔑 ÉP @timestamp → ISO-8601 STRING (ES & Kibana friendly)
+        # ÉP @timestamp → ISO-8601 STRING (ES & Kibana friendly)
         .withColumn(
             "@timestamp", date_format(col("@timestamp"), "yyyy-MM-dd'T'HH:mm:ss")
         )
