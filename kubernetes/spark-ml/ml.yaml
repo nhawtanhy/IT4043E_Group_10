@@ -38,7 +38,7 @@ spec:
                     mode: cluster
                     sparkVersion: 3.3.3
 
-                    # 🔥 THUẦN BATCH – TỰ XOÁ
+                    
                     timeToLiveSeconds: 60
 
                     image: spark-weather-ml:3.3.3-v1

@@ -69,8 +69,8 @@ spark = (
 
 spark.sparkContext.setLogLevel("WARN")
 
-print(f"📥 Reading from S3: {S3_INPUT}")
-print(f"📤 Writing Silver to: {SILVER_PATH}")
+print(f"Reading from S3: {S3_INPUT}")
+print(f"Writing Silver to: {SILVER_PATH}")
 
 
 # READ PARQUET FILES (ALL CITIES)
@@ -137,7 +137,7 @@ silver = silver.repartition("city")
 silver.cache()
 
 count = silver.count()
-print(f"🔍 Silver record count: {count}")
+print(f"Silver record count: {count}")
 
 silver.groupBy("city").count().show(truncate=False)
 
@@ -145,5 +145,5 @@ silver.groupBy("city").count().show(truncate=False)
 # WRITE SILVER (PARTITIONED BY CITY)
 (silver.write.mode("overwrite").partitionBy("city").parquet(SILVER_PATH))
 
-print("✅ Silver job completed successfully")
+print("Silver job completed successfully")
 spark.stop()

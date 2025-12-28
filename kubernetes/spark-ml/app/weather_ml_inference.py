@@ -90,13 +90,13 @@ df = df.withColumn("target_future", F.lead("temp", 1).over(w)).dropna()
 # LOAD MODEL (ONCE – DRIVER ONLY)
 
 if not os.path.exists(MODEL_PATH):
-    raise RuntimeError(f"❌ Model path not found: {MODEL_PATH}")
+    raise RuntimeError(f"Model path not found: {MODEL_PATH}")
 
-print(f"📦 Loading ML model from: {MODEL_PATH}")
+print(f"Loading ML model from: {MODEL_PATH}")
 
 model = PipelineModel.load(MODEL_PATH)
 
-print("✅ Model loaded successfully")
+print("Model loaded successfully")
 
 
 # INFERENCE

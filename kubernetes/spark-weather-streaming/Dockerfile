@@ -27,12 +27,7 @@ RUN curl -fLo jars/spark-sql-kafka-0-10_2.12-3.3.3.jar \
     curl -fLo jars/commons-pool2-2.11.1.jar \
     https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
 
-# =========================================================
-# 3. App code
-# =========================================================
-# =========================================================
-# 2. Elasticsearch Spark connector (MATCH Spark 3.3.x)
-# =========================================================
+
 RUN curl -fLo jars/elasticsearch-spark-30_2.12-8.11.3.jar \
     https://repo1.maven.org/maven2/org/elasticsearch/elasticsearch-spark-30_2.12/8.11.3/elasticsearch-spark-30_2.12-8.11.3.jar
 

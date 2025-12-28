@@ -192,7 +192,7 @@ def fetch_weather_24h(city: str):
 
 def main():
     for city in CITY_LIST:
-        print(f"🌍 Processing {city}")
+        print(f"Processing {city}")
         fetch_weather_24h(city)
 
     print("Silver batch completed successfully")

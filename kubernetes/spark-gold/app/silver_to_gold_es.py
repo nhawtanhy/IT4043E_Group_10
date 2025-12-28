@@ -76,7 +76,7 @@ if last_ts:
     df = df.filter(col("timestamp") > last_ts)
 
 if df.rdd.isEmpty():
-    print("ℹ️ No new Silver data. Exit.")
+    print("No new Silver data. Exit.")
     spark.stop()
     raise SystemExit(0)
 

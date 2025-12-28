@@ -144,7 +144,7 @@ def send_to_kafka(record: dict):
 
 
 def main():
-    print(f"🚀 Weather producer started → topic={TOPIC}")
+    print(f"Weather producer started → topic={TOPIC}")
 
     while True:
         for city in CITY_LIST:
