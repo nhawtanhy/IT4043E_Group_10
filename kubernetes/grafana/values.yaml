@@ -1,0 +1,145 @@
+# =====================================================
+# GLOBAL
+# =====================================================
+global:
+  rbac:
+    create: true
+
+# =====================================================
+# PROMETHEUS
+# =====================================================
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    # ⏱️ Giảm tải cực mạnh
+    scrapeInterval: 60s
+    evaluationInterval: 60s
+
+    retention: 5d
+
+    # 📉 GIỚI HẠN TÀI NGUYÊN (QUAN TRỌNG)
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # ❌ KHÔNG DÙNG REMOTE WRITE
+    remoteWrite: []
+    remoteRead: []
+
+    # ❌ KHÔNG CẦN ALERT RULE NẶNG
+    enableAdminAPI: false
+
+    # ❌ KHÔNG SCALE
+    replicas: 1
+
+    # ❌ KHÔNG SHARD
+    shards: 1
+
+    # ❌ KHÔNG WAL NẶNG
+    walCompression: true
+
+# =====================================================
+# ALERTMANAGER (GIỮ NHẸ)
+# =====================================================
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# =====================================================
+# GRAFANA
+# =====================================================
+grafana:
+  enabled: true
+
+  adminUser: admin
+  adminPassword: admin
+
+  defaultDashboardsEnabled: true
+
+  # 📉 NHẸ
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 80
+
+# =====================================================
+# NODE EXPORTER (CPU / RAM)
+# =====================================================
+prometheus-node-exporter:
+  enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# =====================================================
+# KUBE STATE METRICS (GIỮ)
+# =====================================================
+kube-state-metrics:
+  enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+# =====================================================
+# ❌ TẮT NHỮNG THỨ RẤT NẶNG (QUAN TRỌNG)
+# =====================================================
+kubeEtcd:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+kubeApiServer:
+  enabled: false
+
+# =====================================================
+# ❌ TẮT RULE NẶNG
+# =====================================================
+defaultRules:
+  create: false
+
+# =====================================================
+# ❌ TẮT MONITOR KHÔNG CẦN
+# =====================================================
+coreDns:
+  enabled: false
+
+kubeDns:
+  enabled: false
