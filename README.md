@@ -269,4 +269,7 @@ kubectl delete sparkapplication -n default \
     | egrep 'bronze-to-es-batch|weather-s3-to-silver|silver-to-gold-es|weather-ml' \
     | awk '{print $1}')
 
+### Check CPU
+kubectl describe node data-platform-control-plane | egrep -A3 "Allocatable|Allocated resources|memory|cpu"
+
 
