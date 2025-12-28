@@ -1,16 +1,16 @@
 
 
-## IT4043E_Group_10
+# IT4043E_Group_10
 
 End-to-End Big Data Platform for Real-Time Weather Analytics
 
 This project implements an end-to-end big data pipeline for collecting, processing, and analyzing real-time weather data in Vietnam.
 The system integrates Apache Kafka, Apache Spark (streaming & batch), distributed storage, and machine learning inference, all orchestrated on Kubernetes.
 
-# Run in folder Kubernetes
+## Run in folder Kubernetes
 ⸻
 
-Kubernetes Cluster Configuration
+### Kubernetes Cluster Configuration
 
 kubectl get nodes -o wide
 kubectl get namespaces -o name
@@ -19,7 +19,7 @@ Note: The system runs on a single-node Kubernetes cluster (Kind), where the node
 
 ⸻
 
-Kafka Layer
+### Kafka Layer
 
 Clean up image if needed
 
@@ -38,7 +38,7 @@ kubectl create secret generic openweather-secret \
   --from-literal=api-key=<YOUR_API_KEY> \
   -n data
 
-Deploy Kafka (Strimzi)
+### Deploy Kafka (Strimzi)
 
 kubectl apply -f kafka-nodepool.yaml
 kubectl apply -f kafka.yaml
@@ -81,7 +81,7 @@ kubectl delete pod -l app=weather-kafka-producer
 
 ⸻
 
-Spark Streaming (Kafka → Bronze)
+### Spark Streaming (Kafka → Bronze)
 
 Delete existing Spark application
 
@@ -111,7 +111,7 @@ kubectl logs -n default weather-streaming-to-bronze-driver -f
 
 ⸻
 
-Bronze Batch Layer (Parquet → Elasticsearch)
+### Bronze Batch Layer (Parquet → Elasticsearch)
 
 Delete cronjob and old jobs
 
@@ -147,7 +147,7 @@ kubectl logs -f bronze-to-es-batch-*-driver
 
 ⸻
 
-S3 Historical Data Ingestion
+### S3 Historical Data Ingestion
 
 Build and load image
 
@@ -176,7 +176,7 @@ aws s3 ls s3://hust-bucket-storage/weather_silver/
 
 ⸻
 
-Silver Layer (S3 → Parquet)
+### Silver Layer (S3 → Parquet)
 
 Build image and deploy
 
@@ -194,7 +194,7 @@ kubectl describe sparkapplication weather-s3-to-silver-*
 
 ⸻
 
-Gold Layer (Aggregations → Elasticsearch)
+### Gold Layer (Aggregations → Elasticsearch)
 
 docker build -t spark-weather-gold:3.3.3 .
 kind load docker-image spark-weather-gold:3.3.3 --name data-platform
@@ -205,7 +205,7 @@ kubectl apply -f silver-to-gold-es.yaml
 
 ⸻
 
-Machine Learning Inference
+### Machine Learning Inference
 
 docker build -t spark-weather-ml:3.3.3-v1 .
 kind load docker-image spark-weather-ml:3.3.3-v1 --name data-platform
@@ -216,7 +216,7 @@ kubectl logs -f weather-ml-inference-*-driver
 
 ⸻
 
-Elasticsearch & Kibana
+### Elasticsearch & Kibana
 
 Elasticsearch
 
@@ -236,7 +236,7 @@ kubectl port-forward -n observability svc/kibana-weather-kb-http 5601:5601
 
 ⸻
 
-Monitoring (Prometheus & Grafana)
+### Monitoring (Prometheus & Grafana)
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
@@ -257,7 +257,7 @@ kubectl delete namespace monitoring
 
 ⸻
 
-Resource Inspection & Cleanup
+### Resource Inspection & Cleanup
 
 kubectl describe node data-platform-control-plane
 kubectl get sparkapplication -n default
