@@ -1,12 +1,13 @@
 
 
-IT4043E_Group_10
+## IT4043E_Group_10
 
 End-to-End Big Data Platform for Real-Time Weather Analytics
 
 This project implements an end-to-end big data pipeline for collecting, processing, and analyzing real-time weather data in Vietnam.
 The system integrates Apache Kafka, Apache Spark (streaming & batch), distributed storage, and machine learning inference, all orchestrated on Kubernetes.
 
+# Run in folder Kubernetes
 ⸻
 
 Kubernetes Cluster Configuration
